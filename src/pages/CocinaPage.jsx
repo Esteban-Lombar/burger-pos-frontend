@@ -21,7 +21,7 @@ function formatTime(isoString) {
 function getVeggiesLabel(cfg) {
   if (cfg.noVeggies) return "sin verduras";
   if (cfg.lettuceOption === "wrap") return "envolver en lechuga";
-  if (cfg.lettuceOption === "sin") return "sin lechuga";
+  if (cfg.lettuceOption === "sin") return "no lechuga";
   return "con verduras";
 }
 
@@ -158,19 +158,26 @@ function CocinaPage() {
                         </div>
 
                         {/* Línea 1: carnes, tocineta, verduras */}
-                        <div className="text-[11px] text-slate-600">
-                          <span className="font-semibold">Carne:</span>{" "}
-                          {cfg.meatQty || 1}x{" "}
-                          · <span className="font-semibold">Toc.:</span>{" "}
-                          {cfg.baconType || "-"}
-                          {cfg.extraBacon && " (+ adición)"}{" "}
-                          · <span className="font-semibold">Verduras:</span>{" "}
-                          {getVeggiesLabel(cfg)}{" "}
-                          · <span className="font-semibold">Tomate:</span>{" "}
-                          {cfg.tomato ? "sí" : "no"}{" "}
-                          · <span className="font-semibold">Cebolla:</span>{" "}
-                          {cfg.onion ? "sí" : "no"}
-                        </div>
+<div className="text-[11px] text-slate-600">
+  <span className="font-semibold">Carne:</span>{" "}
+  {cfg.meatQty || 1}x{" "}
+  · <span className="font-semibold">Toc.:</span>{" "}
+  {cfg.baconType || "-"}
+  {cfg.extraBacon && " (+ adición)"}{" "}
+  · <span className="font-semibold">Verduras:</span>{" "}
+  {getVeggiesLabel(cfg)}{" "}
+  · · <span className="font-semibold">Lechuga:</span>{" "}
+  {cfg.noVeggies || cfg.lettuceOption === "sin"
+  ? "no"
+  : cfg.lettuceOption === "wrap"
+  ? "wrap"
+  : "sí"}
+  · <span className="font-semibold">Tomate:</span>{" "}
+  {cfg.tomato ? "sí" : "no"}{" "}
+  · <span className="font-semibold">Cebolla:</span>{" "}
+  {cfg.onion ? "sí" : "no"}
+</div>
+
 
                         {/* Línea 2: papas, combo, gaseosa */}
                         <div className="text-[11px] text-slate-600">
