@@ -368,70 +368,105 @@ function MeseroPage() {
               </div>
 
               {/* Verduras */}
-              <div>
-                <span className="block mb-1">Verduras:</span>
-                <div className="flex flex-wrap gap-2 mb-1">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handleConfigChange("lettuceOption", "normal")
-                    }
-                    className={`px-2 py-1 rounded-full border text-[11px] ${
-                      config.lettuceOption === "normal" &&
-                      !config.noVeggies
-                        ? "bg-emerald-300 text-emerald-950 border-emerald-400"
-                        : "bg-emerald-900 text-emerald-100 border-emerald-700"
-                    }`}
-                  >
-                    Con verduras
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handleConfigChange("lettuceOption", "wrap")
-                    }
-                    className={`px-2 py-1 rounded-full border text-[11px] ${
-                      config.lettuceOption === "wrap"
-                        ? "bg-emerald-300 text-emerald-950 border-emerald-400"
-                        : "bg-emerald-900 text-emerald-100 border-emerald-700"
-                    }`}
-                  >
-                    Envolver en lechuga
-                  </button>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  <label className="flex items-center gap-1">
-                    <input
-                      type="checkbox"
-                      checked={config.tomato}
-                      onChange={(e) =>
-                        handleConfigChange("tomato", e.target.checked)
-                      }
-                    />
-                    Con tomate
-                  </label>
-                  <label className="flex items-center gap-1">
-                    <input
-                      type="checkbox"
-                      checked={config.onion}
-                      onChange={(e) =>
-                        handleConfigChange("onion", e.target.checked)
-                      }
-                    />
-                    Con cebolla
-                  </label>
-                  <label className="flex items-center gap-1">
-                    <input
-                      type="checkbox"
-                      checked={config.noVeggies}
-                      onChange={(e) =>
-                        handleConfigChange("noVeggies", e.target.checked)
-                      }
-                    />
-                    Sin verduras
-                  </label>
-                </div>
-              </div>
+<div>
+  <span className="block mb-1">Verduras:</span>
+
+  {/* Botones de modo general */}
+  <div className="flex flex-wrap gap-2 mb-1">
+    <button
+      type="button"
+      onClick={() => {
+        // con verduras normales
+        handleConfigChange("noVeggies", false);
+        handleConfigChange("lettuceOption", "normal");
+        handleConfigChange("tomato", true);
+        handleConfigChange("onion", true);
+      }}
+      className={`px-2 py-1 rounded-full border text-[11px] ${
+        !config.noVeggies && config.lettuceOption === "normal"
+          ? "bg-emerald-300 text-emerald-950 border-emerald-400"
+          : "bg-emerald-900 text-emerald-100 border-emerald-700"
+      }`}
+    >
+      Con verduras
+    </button>
+
+    <button
+      type="button"
+      onClick={() => {
+        // envolver en lechuga pero seguir con verduras
+        handleConfigChange("noVeggies", false);
+        handleConfigChange("lettuceOption", "wrap");
+        handleConfigChange("tomato", true);
+        handleConfigChange("onion", true);
+      }}
+      className={`px-2 py-1 rounded-full border text-[11px] ${
+        !config.noVeggies && config.lettuceOption === "wrap"
+          ? "bg-emerald-300 text-emerald-950 border-emerald-400"
+          : "bg-emerald-900 text-emerald-100 border-emerald-700"
+      }`}
+    >
+      Envolver en lechuga
+    </button>
+  </div>
+
+  {/* Checkboxes individuales */}
+  <div className="flex flex-wrap gap-3">
+    {/* ✅ Con lechuga / sin lechuga */}
+    <label className="flex items-center gap-1">
+      <input
+        type="checkbox"
+        checked={!config.noVeggies && config.lettuceOption !== "sin"}
+        onChange={(e) => {
+          const checked = e.target.checked;
+          if (!checked) {
+            // sin lechuga pero se respetan tomate/cebolla
+            handleConfigChange("lettuceOption", "sin");
+          } else {
+            // vuelve a lechuga normal
+            handleConfigChange("noVeggies", false);
+            handleConfigChange("lettuceOption", "normal");
+          }
+        }}
+      />
+      Con lechuga
+    </label>
+
+    <label className="flex items-center gap-1">
+      <input
+        type="checkbox"
+        checked={config.tomato}
+        onChange={(e) =>
+          handleConfigChange("tomato", e.target.checked)
+        }
+      />
+      Con tomate
+    </label>
+
+    <label className="flex items-center gap-1">
+      <input
+        type="checkbox"
+        checked={config.onion}
+        onChange={(e) =>
+          handleConfigChange("onion", e.target.checked)
+        }
+      />
+      Con cebolla
+    </label>
+
+    <label className="flex items-center gap-1">
+      <input
+        type="checkbox"
+        checked={config.noVeggies}
+        onChange={(e) =>
+          handleConfigChange("noVeggies", e.target.checked)
+        }
+      />
+      Sin verduras
+    </label>
+  </div>
+</div>
+
 
               {/* Papas y gaseosa */}
               <div>

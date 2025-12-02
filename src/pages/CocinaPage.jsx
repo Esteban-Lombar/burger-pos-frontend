@@ -41,8 +41,18 @@ function CocinaPage() {
   }
 
   useEffect(() => {
-    loadOrders(true);
-  }, []);
+  // carga inicial con el spinner
+  loadOrders(true);
+
+  // luego cada 5 segundos refresca sin spinner grande
+  const intervalId = setInterval(() => {
+    loadOrders(false);
+  }, 5000); // 5000 ms = 5 segundos
+
+  // limpiar intervalo cuando se desmonte el componente
+  return () => clearInterval(intervalId);
+}, []);
+
 
   const handleSetStatus = async (orderId, status) => {
     try {
