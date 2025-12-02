@@ -10,17 +10,18 @@ function formatCOP(value) {
 }
 
 const baseConfig = {
+  quantity: 1,          // cuántas hamburguesas de este tipo
+  meatQty: 1,           // cuántas carnes tiene cada hamburguesa
+  baconType: "asada",   // asada / caramelizada (fijo por producto)
   extraBacon: false,
-  lettuceOption: "normal", // normal | sin | wrap
+  lettuceOption: "normal", // normal | wrap | sin
   tomato: true,
   onion: true,
   noVeggies: false,
   includesFries: false,
   extraFriesQty: 0,
-  drinkCode: "none", // none | coca | coca_zero
+  drinkCode: "none",    // none | coca | coca_zero
   notes: "",
-  quantity: 1,
-  baconType: "asada", // 👈 valor por defecto
 };
 
 function MeseroPage() {
@@ -57,7 +58,6 @@ function MeseroPage() {
   }, []);
 
   const openConfig = (product) => {
-    // AHORA: usamos product.options.tocineta ("asada" / "caramelizada")
     const baconType =
       product.options?.tocineta === "caramelizada"
         ? "caramelizada"
@@ -79,6 +79,7 @@ function MeseroPage() {
     setConfig((prev) => {
       let updated = { ...prev, [field]: value };
 
+      // Si marca "sin verduras", apagamos todo y lechuga = "sin"
       if (field === "noVeggies" && value === true) {
         updated.lettuceOption = "sin";
         updated.tomato = false;
@@ -97,8 +98,9 @@ function MeseroPage() {
     const totalPrice = unitPrice * quantity;
 
     const burgerConfig = {
-      meatType: "carne", // si después tienes doble carne lo podemos ampliar
-      baconType: config.baconType, // asada / caramelizada
+      meatType: "carne",
+      meatQty: Number(config.meatQty) || 1,
+      baconType: config.baconType,
       extraBacon: config.extraBacon,
       lettuceOption: config.lettuceOption,
       tomato: config.tomato,
@@ -163,6 +165,12 @@ function MeseroPage() {
     }
   };
 
+  const getDrinkLabel = (code) => {
+    if (code === "coca") return "Coca-Cola";
+    if (code === "coca_zero") return "Coca-Cola Zero";
+    return "Sin bebida";
+  };
+
   return (
     <div className="min-h-screen bg-emerald-900 flex flex-col">
       {/* Header */}
@@ -172,7 +180,7 @@ function MeseroPage() {
             Tomar pedido 🍔
           </h1>
           <p className="text-xs text-emerald-200">
-            Una mesa = un pedido, varias personas = varios items
+            Una mesa = un pedido, varias personas = varios ítems
           </p>
         </div>
       </header>
@@ -253,38 +261,43 @@ function MeseroPage() {
                 </p>
               ) : (
                 <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {items.map((item, index) => (
-                    <div
-                      key={index}
-                      className="bg-emerald-900/80 rounded-lg p-2 border border-emerald-700/70"
-                    >
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <div className="font-semibold text-xs">
-                            {item.productName} x{item.quantity}
-                          </div>
-                          <div className="text-[11px] text-emerald-300">
-                            {item.burgerConfig?.baconType === "caramelizada"
-                              ? "Tocineta caramelizada"
-                              : "Tocineta asada"}
-                            {item.includesFries && " · Con papas"}
-                            {item.drinkCode === "coca" && " · Coca-Cola"}
-                            {item.drinkCode === "coca_zero" &&
-                              " · Coca-Cola Zero"}
-                          </div>
-                        </div>
-                        <div className="text-xs font-bold text-amber-200">
-                          {formatCOP(item.totalPrice || 0)}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleRemoveItem(index)}
-                        className="mt-1 text-[11px] text-red-200"
+                  {items.map((item, index) => {
+                    const cfg = item.burgerConfig || {};
+                    return (
+                      <div
+                        key={index}
+                        className="bg-emerald-900/80 rounded-lg p-2 border border-emerald-700/70"
                       >
-                        Quitar
-                      </button>
-                    </div>
-                  ))}
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <div className="font-semibold text-xs">
+                              {item.productName} x{item.quantity}
+                            </div>
+                            <div className="text-[11px] text-emerald-300">
+                              {/* resumen corto para el mesero */}
+                              Carne: {cfg.meatQty || 1}x · Toc.:{" "}
+                              {cfg.baconType || "-"}
+                              {cfg.extraBacon && " · +Tocineta"}
+                              {item.includesFries && " · Combo"}
+                              {item.extraFriesQty > 0 &&
+                                ` · +${item.extraFriesQty} papas`}
+                              {item.drinkCode !== "none" &&
+                                ` · ${getDrinkLabel(item.drinkCode)}`}
+                            </div>
+                          </div>
+                          <div className="text-xs font-bold text-amber-200">
+                            {formatCOP(item.totalPrice || 0)}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleRemoveItem(index)}
+                          className="mt-1 text-[11px] text-red-200"
+                        >
+                          Quitar
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -333,7 +346,7 @@ function MeseroPage() {
             </div>
 
             <div className="space-y-2 text-xs text-emerald-50">
-              {/* Cantidad */}
+              {/* Cantidad de hamburguesas */}
               <div className="flex items-center gap-2">
                 <span>Personas (cantidad):</span>
                 <input
@@ -342,6 +355,20 @@ function MeseroPage() {
                   value={config.quantity}
                   onChange={(e) =>
                     handleConfigChange("quantity", e.target.value)
+                  }
+                  className="w-16 px-2 py-1 rounded bg-emerald-900 border border-emerald-700 text-xs outline-none"
+                />
+              </div>
+
+              {/* Nº de carnes */}
+              <div className="flex items-center gap-2">
+                <span>Número de carnes:</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={config.meatQty}
+                  onChange={(e) =>
+                    handleConfigChange("meatQty", e.target.value)
                   }
                   className="w-16 px-2 py-1 rounded bg-emerald-900 border border-emerald-700 text-xs outline-none"
                 />
@@ -368,105 +395,102 @@ function MeseroPage() {
               </div>
 
               {/* Verduras */}
-<div>
-  <span className="block mb-1">Verduras:</span>
+              <div>
+                <span className="block mb-1">Verduras:</span>
 
-  {/* Botones de modo general */}
-  <div className="flex flex-wrap gap-2 mb-1">
-    <button
-      type="button"
-      onClick={() => {
-        // con verduras normales
-        handleConfigChange("noVeggies", false);
-        handleConfigChange("lettuceOption", "normal");
-        handleConfigChange("tomato", true);
-        handleConfigChange("onion", true);
-      }}
-      className={`px-2 py-1 rounded-full border text-[11px] ${
-        !config.noVeggies && config.lettuceOption === "normal"
-          ? "bg-emerald-300 text-emerald-950 border-emerald-400"
-          : "bg-emerald-900 text-emerald-100 border-emerald-700"
-      }`}
-    >
-      Con verduras
-    </button>
+                {/* Botones generales */}
+                <div className="flex flex-wrap gap-2 mb-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleConfigChange("noVeggies", false);
+                      handleConfigChange("lettuceOption", "normal");
+                      handleConfigChange("tomato", true);
+                      handleConfigChange("onion", true);
+                    }}
+                    className={`px-2 py-1 rounded-full border text-[11px] ${
+                      !config.noVeggies && config.lettuceOption === "normal"
+                        ? "bg-emerald-300 text-emerald-950 border-emerald-400"
+                        : "bg-emerald-900 text-emerald-100 border-emerald-700"
+                    }`}
+                  >
+                    Con verduras
+                  </button>
 
-    <button
-      type="button"
-      onClick={() => {
-        // envolver en lechuga pero seguir con verduras
-        handleConfigChange("noVeggies", false);
-        handleConfigChange("lettuceOption", "wrap");
-        handleConfigChange("tomato", true);
-        handleConfigChange("onion", true);
-      }}
-      className={`px-2 py-1 rounded-full border text-[11px] ${
-        !config.noVeggies && config.lettuceOption === "wrap"
-          ? "bg-emerald-300 text-emerald-950 border-emerald-400"
-          : "bg-emerald-900 text-emerald-100 border-emerald-700"
-      }`}
-    >
-      Envolver en lechuga
-    </button>
-  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleConfigChange("noVeggies", false);
+                      handleConfigChange("lettuceOption", "wrap");
+                      handleConfigChange("tomato", true);
+                      handleConfigChange("onion", true);
+                    }}
+                    className={`px-2 py-1 rounded-full border text-[11px] ${
+                      !config.noVeggies && config.lettuceOption === "wrap"
+                        ? "bg-emerald-300 text-emerald-950 border-emerald-400"
+                        : "bg-emerald-900 text-emerald-100 border-emerald-700"
+                    }`}
+                  >
+                    Envolver en lechuga
+                  </button>
+                </div>
 
-  {/* Checkboxes individuales */}
-  <div className="flex flex-wrap gap-3">
-    {/* ✅ Con lechuga / sin lechuga */}
-    <label className="flex items-center gap-1">
-      <input
-        type="checkbox"
-        checked={!config.noVeggies && config.lettuceOption !== "sin"}
-        onChange={(e) => {
-          const checked = e.target.checked;
-          if (!checked) {
-            // sin lechuga pero se respetan tomate/cebolla
-            handleConfigChange("lettuceOption", "sin");
-          } else {
-            // vuelve a lechuga normal
-            handleConfigChange("noVeggies", false);
-            handleConfigChange("lettuceOption", "normal");
-          }
-        }}
-      />
-      Con lechuga
-    </label>
+                {/* Checkboxes individuales */}
+                <div className="flex flex-wrap gap-3">
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      checked={
+                        !config.noVeggies &&
+                        config.lettuceOption !== "sin"
+                      }
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        if (!checked) {
+                          handleConfigChange("lettuceOption", "sin");
+                        } else {
+                          handleConfigChange("noVeggies", false);
+                          handleConfigChange("lettuceOption", "normal");
+                        }
+                      }}
+                    />
+                    Con lechuga
+                  </label>
 
-    <label className="flex items-center gap-1">
-      <input
-        type="checkbox"
-        checked={config.tomato}
-        onChange={(e) =>
-          handleConfigChange("tomato", e.target.checked)
-        }
-      />
-      Con tomate
-    </label>
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      checked={config.tomato}
+                      onChange={(e) =>
+                        handleConfigChange("tomato", e.target.checked)
+                      }
+                    />
+                    Con tomate
+                  </label>
 
-    <label className="flex items-center gap-1">
-      <input
-        type="checkbox"
-        checked={config.onion}
-        onChange={(e) =>
-          handleConfigChange("onion", e.target.checked)
-        }
-      />
-      Con cebolla
-    </label>
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      checked={config.onion}
+                      onChange={(e) =>
+                        handleConfigChange("onion", e.target.checked)
+                      }
+                    />
+                    Con cebolla
+                  </label>
 
-    <label className="flex items-center gap-1">
-      <input
-        type="checkbox"
-        checked={config.noVeggies}
-        onChange={(e) =>
-          handleConfigChange("noVeggies", e.target.checked)
-        }
-      />
-      Sin verduras
-    </label>
-  </div>
-</div>
-
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      checked={config.noVeggies}
+                      onChange={(e) =>
+                        handleConfigChange("noVeggies", e.target.checked)
+                      }
+                    />
+                    Sin verduras
+                  </label>
+                </div>
+              </div>
 
               {/* Papas y gaseosa */}
               <div>
@@ -476,7 +500,10 @@ function MeseroPage() {
                     type="checkbox"
                     checked={config.includesFries}
                     onChange={(e) =>
-                      handleConfigChange("includesFries", e.target.checked)
+                      handleConfigChange(
+                        "includesFries",
+                        e.target.checked
+                      )
                     }
                   />
                   En combo (papas incluidas)
@@ -488,7 +515,10 @@ function MeseroPage() {
                     min="0"
                     value={config.extraFriesQty}
                     onChange={(e) =>
-                      handleConfigChange("extraFriesQty", e.target.value)
+                      handleConfigChange(
+                        "extraFriesQty",
+                        e.target.value
+                      )
                     }
                     className="w-16 px-2 py-1 rounded bg-emerald-900 border border-emerald-700 text-xs outline-none"
                   />
