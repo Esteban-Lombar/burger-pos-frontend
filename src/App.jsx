@@ -16,7 +16,7 @@ function App() {
               POS Hamburguesas
             </h1>
             <p className="text-[11px] sm:text-xs text-slate-300">
-              Pedidos rápidos para el negocio de tu cuñado 🍔
+              Pedidos rápidos para TrailerBurguer 🍔
             </p>
           </div>
 
@@ -64,7 +64,7 @@ function App() {
 
       {/* Footer */}
       <footer className="border-t border-slate-200 py-2 text-center text-[11px] sm:text-xs text-slate-500">
-        Sistema interno – Regalo para Juan 💛
+        Sistema interno – pos 24
       </footer>
     </div>
   );

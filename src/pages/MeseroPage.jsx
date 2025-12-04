@@ -593,10 +593,10 @@ function MeseroPage() {
                   >
                     <option value="none">Sin bebida</option>
                     <option value="coca">
-                      Coca-Cola personal (+$4.000)
+                      Coca-Cola original (+$4.000)
                     </option>
                     <option value="coca_zero">
-                      Coca-Cola Zero personal (+$4.000)
+                      Coca-Cola Zero  (+$4.000)
                     </option>
                   </select>
                 </div>
