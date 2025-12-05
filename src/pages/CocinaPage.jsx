@@ -15,7 +15,7 @@ function formatCOP(value) {
   });
 }
 
-// 💰 mismos precios que estás usando en MeseroPage
+// 💰 mismos precios que usas en MeseroPage
 const ADDON_PRICES = {
   extraMeat: 5000,   // carne adicional
   extraBacon: 3000,  // adición de tocineta
@@ -49,17 +49,22 @@ function drinkLabel(code) {
   return "sin bebida";
 }
 
-// 🔢 mismo cálculo de precio POR HAMBURGUESA que usas en MeseroPage
-function calculateUnitPrice(basePrice, cfg) {
-  let unit = basePrice || 0;
+// 🔢 mismo cálculo que en MeseroPage
+function calculateUnitPrice(product, cfg) {
+  let unit = product.price || 0;
 
   const meatQty = Number(cfg.meatQty) || 1;
   if (meatQty > 1) {
     unit += (meatQty - 1) * ADDON_PRICES.extraMeat;
   }
 
-  if (cfg.extraBacon) unit += ADDON_PRICES.extraBacon;
-  if (cfg.extraCheese) unit += ADDON_PRICES.extraCheese;
+  if (cfg.extraBacon) {
+    unit += ADDON_PRICES.extraBacon;
+  }
+
+  if (cfg.extraCheese) {
+    unit += ADDON_PRICES.extraCheese;
+  }
 
   if (cfg.includesFries) {
     unit += ADDON_PRICES.fries;
@@ -82,137 +87,155 @@ function calculateUnitPrice(basePrice, cfg) {
   return unit;
 }
 
+function summarizeConfig(item) {
+  const c = item.burgerConfig || {};
+  return [
+    `Carne: ${c.meatQty || 1}x`,
+    `Toc: ${c.baconType || "asada"}${c.extraBacon ? " + adic." : ""}`,
+    `Queso extra: ${c.extraCheese ? "sí" : "no"}`,
+    `Verduras: ${c.noVeggies ? "sin" : "con"}`,
+    `Lechuga: ${
+      c.lettuceOption === "wrap"
+        ? "wrap"
+        : c.lettuceOption === "sin"
+        ? "no"
+        : "sí"
+    }`,
+    `Tomate: ${c.tomato ? "sí" : "no"}`,
+    `Cebolla: ${c.onion ? "sí" : "no"}`,
+    `Combo: ${item.includesFries ? "con papas" : "solo hamburguesa"}`,
+    `Adic. papas: ${item.extraFriesQty || 0}`,
+    `Gaseosa: ${drinkLabel(item.drinkCode)}`,
+  ].join(" · ");
+}
+
 function CocinaPage() {
   const [orders, setOrders] = useState([]);
-  const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // edición de mesa/para llevar
-  const [editingTableOrder, setEditingTableOrder] = useState(null);
+  const [products, setProducts] = useState([]);
 
-  // edición de ÍTEM
-  const [editingOrder, setEditingOrder] = useState(null); // orden completa
-  const [editingItemIndex, setEditingItemIndex] = useState(null); // índice del item
+  // estado para modal de edición/agregado
+  const [editingOrder, setEditingOrder] = useState(null);
+  const [editingIndex, setEditingIndex] = useState(null); // null = agregando
+  const [selectedProduct, setSelectedProduct] = useState(null);
   const [config, setConfig] = useState(baseConfig);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [savingItem, setSavingItem] = useState(false);
 
-  // cargar pedidos + productos
+  // mensaje de error abajo
+  const [feedback, setFeedback] = useState("");
+
   useEffect(() => {
-    async function loadAll() {
-      try {
-        setLoading(true);
-        setError("");
-        const [ordersResp, productsResp] = await Promise.all([
-          fetchPendingOrders(),
-          fetchProducts(),
-        ]);
-        setOrders(ordersResp);
-        setProducts(productsResp);
-      } catch (err) {
-        console.error(err);
-        setError("Error cargando pedidos pendientes");
-      } finally {
-        setLoading(false);
-      }
-    }
     loadAll();
   }, []);
 
-  const refreshOrders = async () => {
+  async function loadAll() {
     try {
-      const data = await fetchPendingOrders();
-      setOrders(data);
+      setLoading(true);
+      setError("");
+      const [ordersRes, productsRes] = await Promise.all([
+        fetchPendingOrders(),
+        fetchProducts(),
+      ]);
+      setOrders(ordersRes);
+      setProducts(productsRes);
     } catch (err) {
       console.error(err);
-      setError("Error actualizando pedidos");
+      setError("Error cargando pedidos o productos");
+    } finally {
+      setLoading(false);
     }
-  };
+  }
 
-  // ----------------- Cambiar estado -----------------
-  const handleStatusChange = async (orderId, status) => {
+  async function handleStatusChange(orderId, nextStatus) {
     try {
-      await updateOrderStatus(orderId, status);
-      await refreshOrders();
+      setFeedback("");
+      await updateOrderStatus(orderId, nextStatus);
+      await loadAll();
     } catch (err) {
       console.error(err);
-      alert("Error cambiando estado");
+      setFeedback("Error cambiando estado");
     }
-  };
+  }
 
-  // ----------------- EDITAR MESA / PARA LLEVAR -----------------
-  const handleEditTable = async (order) => {
-    const currentMesa =
-      order.toGo || order.tableNumber == null ? "" : String(order.tableNumber);
-
-    const nuevaMesa = window.prompt(
-      "Número de mesa (deja vacío para marcar como PARA LLEVAR):",
-      currentMesa
-    );
-
-    if (nuevaMesa === null) return;
-
-    const payload = {
-      tableNumber: nuevaMesa === "" ? null : Number(nuevaMesa),
-      toGo: nuevaMesa === "" ? true : false,
-    };
-
+  // editar solo mesa / para llevar (lo que ya tenías)
+  async function handleEditTable(order) {
     try {
+      const input = window.prompt(
+        "Número de mesa (deja vacío para marcar como PARA LLEVAR):",
+        order.tableNumber || ""
+      );
+
+      if (input === null) return; // cancel
+
+      const trimmed = input.trim();
+      const isToGo = trimmed === "";
+
+      const payload = {
+        tableNumber: isToGo ? null : Number(trimmed),
+        toGo: isToGo,
+      };
+
       await updateOrderData(order._id, payload);
-      await refreshOrders();
+      await loadAll();
     } catch (err) {
       console.error(err);
-      alert("Error editando la orden");
+      setFeedback("Error editando la orden");
     }
-  };
+  }
 
-  // ----------------- EDITAR ÍTEM COMPLETO -----------------
-
-  const openEditItemModal = (order, itemIndex) => {
-    const item = order.items[itemIndex];
+  // abrir modal para EDITAR un ítem existente
+  function openEditItem(order, index) {
+    const item = order.items[index];
     if (!item) return;
 
-    // buscar producto para saber tipo de tocineta
-    const product = products.find((p) => String(p._id) === String(item.product));
+    const product = products.find((p) => p._id === item.product);
+    if (!product) return;
 
     setEditingOrder(order);
-    setEditingItemIndex(itemIndex);
+    setEditingIndex(index);
+    setSelectedProduct(product);
+
+    const c = item.burgerConfig || {};
+
     setConfig({
       quantity: item.quantity || 1,
-      meatQty: item.burgerConfig?.meatQty || 1,
-      extraBacon: item.burgerConfig?.extraBacon || false,
-      extraCheese: item.burgerConfig?.extraCheese || false,
-      lettuceOption: item.burgerConfig?.lettuceOption || "normal",
-      tomato:
-        typeof item.burgerConfig?.tomato === "boolean"
-          ? item.burgerConfig.tomato
-          : true,
-      onion:
-        typeof item.burgerConfig?.onion === "boolean"
-          ? item.burgerConfig.onion
-          : true,
-      noVeggies: item.burgerConfig?.noVeggies || false,
-      includesFries: item.includesFries || false,
+      meatQty: c.meatQty || 1,
+      extraBacon: !!c.extraBacon,
+      extraCheese: !!c.extraCheese,
+      lettuceOption: c.lettuceOption || "normal",
+      tomato: typeof c.tomato === "boolean" ? c.tomato : true,
+      onion: typeof c.onion === "boolean" ? c.onion : true,
+      noVeggies: !!c.noVeggies,
+      includesFries: !!item.includesFries,
       extraFriesQty: item.extraFriesQty || 0,
       drinkCode: item.drinkCode || "none",
-      notes: item.burgerConfig?.notes || "",
+      notes: c.notes || "",
       baconType:
-        item.burgerConfig?.baconType ||
-        (product?.options?.tocineta === "caramelizada"
+        c.baconType ||
+        (product.options?.tocineta === "caramelizada"
           ? "caramelizada"
           : "asada"),
     });
-    setModalOpen(true);
-  };
+  }
 
-  const closeModal = () => {
-    setModalOpen(false);
-    setEditingOrder(null);
-    setEditingItemIndex(null);
+  // abrir modal para AGREGAR una hamburguesa nueva a la misma orden
+  function openAddItem(order) {
+    setEditingOrder(order);
+    setEditingIndex(null); // agregando
+    setSelectedProduct(null); // se selecciona en el select
     setConfig(baseConfig);
-  };
+  }
 
-  const handleConfigChange = (field, value) => {
+  function closeModal() {
+    setEditingOrder(null);
+    setEditingIndex(null);
+    setSelectedProduct(null);
+    setConfig(baseConfig);
+  }
+
+  function handleConfigChange(field, value) {
     setConfig((prev) => {
       const updated = { ...prev, [field]: value };
 
@@ -224,90 +247,74 @@ function CocinaPage() {
 
       return updated;
     });
-  };
+  }
 
-  const handleSaveEditedItem = async () => {
-    if (!editingOrder || editingItemIndex == null) return;
-
-    const order = editingOrder;
-    const item = order.items[editingItemIndex];
-
-    // buscamos el producto para tener el precio base
-    const product = products.find((p) => String(p._id) === String(item.product));
-    const basePrice = product?.price || item.unitPrice || 0;
-
-    const quantity = Number(config.quantity) || 1;
-    const unitPrice = calculateUnitPrice(basePrice, config);
-    const totalPrice = unitPrice * quantity;
-
-    const burgerConfig = {
-      meatType: "carne",
-      meatQty: Number(config.meatQty) || 1,
-      baconType: config.baconType,
-      extraBacon: config.extraBacon,
-      extraCheese: config.extraCheese,
-      lettuceOption: config.lettuceOption,
-      tomato: config.tomato,
-      onion: config.onion,
-      noVeggies: config.noVeggies,
-      notes: config.notes,
-    };
-
-    const updatedItems = order.items.map((it, idx) =>
-      idx === editingItemIndex
-        ? {
-            ...it,
-            quantity,
-            includesFries: config.includesFries,
-            extraFriesQty: Number(config.extraFriesQty) || 0,
-            drinkCode: config.drinkCode,
-            burgerConfig,
-            unitPrice,
-            totalPrice,
-          }
-        : it
-    );
-
-    const newOrderTotal = updatedItems.reduce(
-      (sum, it) => sum + (it.totalPrice || 0),
-      0
-    );
-
-    const payload = {
-      tableNumber: order.tableNumber,
-      toGo: order.toGo,
-      items: updatedItems,
-      total: newOrderTotal, // igual el back lo recalcula, pero lo mandamos bien
-    };
+  async function handleSaveItem() {
+    if (!editingOrder || !selectedProduct) return;
 
     try {
-      await updateOrderData(order._id, payload);
-      // actualizar en el estado local
-      setOrders((prev) =>
-        prev.map((o) =>
-          String(o._id) === String(order._id)
-            ? { ...o, items: updatedItems, total: newOrderTotal }
-            : o
-        )
-      );
+      setSavingItem(true);
+      setFeedback("");
+
+      const quantity = Number(config.quantity) || 1;
+      const unitPrice = calculateUnitPrice(selectedProduct, config);
+      const totalPrice = unitPrice * quantity;
+
+      const burgerConfig = {
+        meatType: "carne",
+        meatQty: Number(config.meatQty) || 1,
+        baconType: config.baconType,
+        extraBacon: !!config.extraBacon,
+        extraCheese: !!config.extraCheese,
+        lettuceOption: config.lettuceOption,
+        tomato: config.tomato,
+        onion: config.onion,
+        noVeggies: !!config.noVeggies,
+        notes: config.notes,
+      };
+
+      const newItem = {
+        product: selectedProduct._id,
+        productName: selectedProduct.name,
+        productCode: selectedProduct.code || null,
+        quantity,
+        includesFries: !!config.includesFries,
+        extraFriesQty: Number(config.extraFriesQty) || 0,
+        drinkCode: config.drinkCode,
+        burgerConfig,
+        unitPrice,
+        totalPrice,
+      };
+
+      let newItems;
+      if (editingIndex === null) {
+        // agregando nueva hamburguesa
+        newItems = [...editingOrder.items, newItem];
+      } else {
+        // editando hamburguesa existente
+        newItems = editingOrder.items.map((it, idx) =>
+          idx === editingIndex ? newItem : it
+        );
+      }
+
+      await updateOrderData(editingOrder._id, {
+        items: newItems,
+        tableNumber: editingOrder.tableNumber,
+        toGo: editingOrder.toGo,
+      });
+
+      await loadAll();
       closeModal();
     } catch (err) {
       console.error(err);
-      alert("Error editando la orden");
+      setFeedback("Error guardando cambios del ítem");
+    } finally {
+      setSavingItem(false);
     }
-  };
-
-  // ----------------- RENDER -----------------
-  if (loading) {
-    return (
-      <div className="p-4 text-emerald-50">
-        Cargando pedidos pendientes...
-      </div>
-    );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50">
+    <div className="min-h-screen bg-slate-900 text-slate-50">
       <header className="p-4 border-b border-slate-800 flex justify-between items-center">
         <div>
           <h1 className="text-lg font-bold">Cocina – Pedidos pendientes</h1>
@@ -317,150 +324,192 @@ function CocinaPage() {
           </p>
         </div>
         <button
-          onClick={refreshOrders}
-          className="px-3 py-1 text-xs rounded-full bg-emerald-500 text-slate-900 font-semibold"
+          onClick={loadAll}
+          className="px-3 py-1 rounded-full bg-emerald-500 text-sm font-semibold"
         >
           Actualizar
         </button>
       </header>
 
-      {error && (
-        <div className="p-4 text-sm text-red-200">⚠️ {error}</div>
-      )}
-
-      <main className="p-4 space-y-3">
-        {orders.length === 0 ? (
-          <p className="text-sm text-slate-300">No hay pedidos pendientes.</p>
-        ) : (
-          orders.map((order) => (
+      {loading ? (
+        <p className="p-4 text-sm">Cargando pedidos...</p>
+      ) : error ? (
+        <p className="p-4 text-sm text-red-300">{error}</p>
+      ) : orders.length === 0 ? (
+        <p className="p-4 text-sm text-slate-300">
+          No hay pedidos pendientes por ahora.
+        </p>
+      ) : (
+        <main className="p-4 space-y-3">
+          {orders.map((order) => (
             <div
               key={order._id}
-              className="bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex flex-col gap-2"
+              className="bg-slate-900 border border-slate-700 rounded-xl p-3"
             >
-              <div className="flex justify-between items-center text-xs">
-                <div>
+              {/* Cabecera de la orden */}
+              <div className="flex justify-between items-center mb-1">
+                <div className="text-xs">
                   <div className="font-semibold">
-                    {order.toGo || order.tableNumber == null
-                      ? "Mesa N/A (PARA LLEVAR)"
-                      : `Mesa ${order.tableNumber}`}
+                    Mesa{" "}
+                    {order.toGo
+                      ? "N/A (Para llevar)"
+                      : order.tableNumber || "N/A"}
                   </div>
-                  <div className="text-[11px] text-slate-400">
+                  <div className="text-slate-400 text-[11px]">
                     {new Date(order.createdAt).toLocaleTimeString("es-CO", {
                       hour: "2-digit",
                       minute: "2-digit",
+                      second: "2-digit",
                     })}
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-[11px] text-slate-400">Total:</div>
-                  <div className="text-sm font-bold text-emerald-300">
-                    {formatCOP(order.total || 0)}
-                  </div>
+                <div className="text-xs font-bold text-emerald-300">
+                  Total: {formatCOP(order.total || 0)}
                 </div>
               </div>
 
-              {/* items */}
-              <div className="mt-1 space-y-1 text-[11px]">
+              {/* Lista de ítems */}
+              <div className="mt-1 space-y-1 text-xs">
                 {order.items.map((item, idx) => (
                   <div
                     key={idx}
-                    className="bg-slate-950/80 rounded-lg p-2 border border-slate-800"
+                    className="border-t border-slate-800 pt-1 mt-1"
                   >
                     <div className="flex justify-between items-center">
-                      <div className="font-semibold text-xs">
-                        {item.productName} x{item.quantity}
+                      <div>
+                        <div className="font-semibold">
+                          {item.productName} x{item.quantity}
+                        </div>
+                        <div className="text-[11px] text-slate-300">
+                          {summarizeConfig(item)}
+                        </div>
                       </div>
-                      <div className="text-xs font-bold text-emerald-300">
+                      <div className="text-[11px] font-bold text-amber-300">
                         {formatCOP(item.totalPrice || 0)}
                       </div>
                     </div>
-                    <div className="mt-1 text-[11px] text-slate-300">
-                      Carne: {item.burgerConfig?.meatQty || 1}x · Toc:{" "}
-                      {item.burgerConfig?.baconType || "asada"}
-                      {item.burgerConfig?.extraBacon && " + adic."} · Queso
-                      extra: {item.burgerConfig?.extraCheese ? "sí" : "no"} ·
-                      Verduras:{" "}
-                      {item.burgerConfig?.noVeggies ? "sin" : "con"} · Lechuga:{" "}
-                      {item.burgerConfig?.lettuceOption === "wrap"
-                        ? "wrap"
-                        : item.burgerConfig?.lettuceOption === "sin"
-                        ? "no"
-                        : "sí"}{" "}
-                      · Tomate:{" "}
-                      {item.burgerConfig?.tomato ? "sí" : "no"} · Cebolla:{" "}
-                      {item.burgerConfig?.onion ? "sí" : "no"}
-                      <br />
-                      Combo:{" "}
-                      {item.includesFries ? "con papas" : "solo hamburguesa"} ·
-                      Adic. papas: {item.extraFriesQty || 0} · Gaseosa:{" "}
-                      {drinkLabel(item.drinkCode)}
-                    </div>
-
                     <button
-                      onClick={() => openEditItemModal(order, idx)}
+                      onClick={() => openEditItem(order, idx)}
                       className="mt-1 text-[11px] text-emerald-300 underline"
                     >
                       Editar ítem
                     </button>
                   </div>
                 ))}
+
+                {/* botón para agregar hamburguesa nueva al mismo pedido */}
+                <button
+                  onClick={() => openAddItem(order)}
+                  className="mt-2 text-[11px] text-amber-300 underline"
+                >
+                  Agregar hamburguesa
+                </button>
               </div>
 
-              {/* acciones de la orden */}
-              <div className="flex justify-between items-center mt-2 text-[11px]">
+              {/* Controles de mesa / estado */}
+              <div className="mt-2 flex items-center justify-between text-[11px]">
+                <button
+                  onClick={() => handleEditTable(order)}
+                  className="text-sky-300 underline"
+                >
+                  Editar mesa / para llevar
+                </button>
+
                 <div className="flex gap-2">
                   <button
-                    onClick={() => handleEditTable(order)}
-                    className="px-3 py-1 rounded-full border border-slate-600 text-slate-100 hover:bg-slate-800"
-                  >
-                    Editar mesa / para llevar
-                  </button>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() =>
-                      handleStatusChange(order._id, "preparando")
-                    }
-                    className={`px-3 py-1 rounded-full text-xs ${
-                      order.status === "preparando"
-                        ? "bg-amber-400 text-black"
-                        : "border border-amber-400 text-amber-300"
-                    }`}
+                    onClick={() => handleStatusChange(order._id, "preparando")}
+                    className="px-3 py-1 rounded-full border border-amber-300 text-amber-300"
                   >
                     Preparando
                   </button>
                   <button
                     onClick={() => handleStatusChange(order._id, "listo")}
-                    className={`px-3 py-1 rounded-full text-xs ${
-                      order.status === "listo"
-                        ? "bg-emerald-400 text-black"
-                        : "border border-emerald-400 text-emerald-300"
-                    }`}
+                    className="px-3 py-1 rounded-full border border-emerald-400 text-emerald-300"
                   >
                     Listo
                   </button>
                 </div>
               </div>
             </div>
-          ))
-        )}
-      </main>
+          ))}
 
-      {/* MODAL EDITAR ÍTEM */}
-      {modalOpen && editingOrder && (
+          {feedback && (
+            <p className="text-xs text-red-300 mt-2 flex items-center gap-1">
+              <span>✖</span> {feedback}
+            </p>
+          )}
+        </main>
+      )}
+
+      {/* MODAL editar / agregar ítem */}
+      {editingOrder && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-40">
-          <div className="bg-slate-950 w-full sm:max-w-md rounded-2xl border border-slate-700 p-4 max-h-[90vh] overflow-y-auto text-xs text-slate-50">
+          <div className="bg-slate-900 w-full max-w-md rounded-2xl border border-slate-600 p-4 max-h-[90vh] overflow-y-auto text-xs">
             <div className="flex justify-between items-center mb-2">
-              <h3 className="font-semibold">
-                Editar ítem –{" "}
-                {editingOrder.toGo || editingOrder.tableNumber == null
-                  ? "Mesa N/A (PARA LLEVAR)"
-                  : `Mesa ${editingOrder.tableNumber}`}
-              </h3>
-              <button onClick={closeModal} className="text-slate-300 text-xs">
+              <h2 className="font-semibold">
+                {editingIndex === null
+                  ? `Agregar ítem – Mesa ${
+                      editingOrder.toGo
+                        ? "N/A (Para llevar)"
+                        : editingOrder.tableNumber || "N/A"
+                    }`
+                  : `Editar ítem – Mesa ${
+                      editingOrder.toGo
+                        ? "N/A (Para llevar)"
+                        : editingOrder.tableNumber || "N/A"
+                    }`}
+              </h2>
+              <button
+                onClick={closeModal}
+                className="text-slate-300 hover:text-slate-100"
+              >
                 Cerrar
               </button>
             </div>
+
+            {/* 🔽 Selector de tipo de hamburguesa (solo al agregar) */}
+            {editingIndex === null && (
+              <div className="mb-3">
+                <span className="block mb-1 text-slate-200">
+                  Tipo de hamburguesa:
+                </span>
+                <select
+                  value={selectedProduct?._id || ""}
+                  onChange={(e) => {
+                    const p = products.find((x) => x._id === e.target.value);
+                    if (p) {
+                      setSelectedProduct(p);
+                      setConfig((prev) => ({
+                        ...prev,
+                        baconType:
+                          p.options?.tocineta === "caramelizada"
+                            ? "caramelizada"
+                            : "asada",
+                      }));
+                    }
+                  }}
+                  className="w-full px-2 py-1 rounded bg-slate-800 border border-slate-600 text-xs"
+                >
+                  <option value="" disabled>
+                    -- Seleccione tipo --
+                  </option>
+                  {products.map((p) => (
+                    <option key={p._id} value={p._id}>
+                      {p.name}{" "}
+                      {p.options?.tocineta === "caramelizada" &&
+                        "(Caramelizada)"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Si estoy editando, muestro el nombre actual */}
+            {editingIndex !== null && selectedProduct && (
+              <p className="mb-2 text-slate-200">
+                Producto: <span className="font-semibold">{selectedProduct.name}</span>
+              </p>
+            )}
 
             <div className="space-y-2">
               {/* Cantidad */}
@@ -473,11 +522,11 @@ function CocinaPage() {
                   onChange={(e) =>
                     handleConfigChange("quantity", e.target.value)
                   }
-                  className="w-16 px-2 py-1 rounded bg-slate-900 border border-slate-700 text-xs outline-none"
+                  className="w-16 px-2 py-1 rounded bg-slate-800 border border-slate-600"
                 />
               </div>
 
-              {/* Carnes */}
+              {/* Número de carnes */}
               <div className="flex items-center gap-2">
                 <span>Número de carnes:</span>
                 <input
@@ -487,17 +536,20 @@ function CocinaPage() {
                   onChange={(e) =>
                     handleConfigChange("meatQty", e.target.value)
                   }
-                  className="w-16 px-2 py-1 rounded bg-slate-900 border border-slate-700 text-xs outline-none"
+                  className="w-16 px-2 py-1 rounded bg-slate-800 border border-slate-600"
                 />
               </div>
 
-              {/* Tocineta / queso */}
+              {/* Tocineta y queso */}
               <div>
                 <span className="block mb-1">Tocineta y queso:</span>
                 <p className="text-[11px] text-slate-300 mb-1">
-                  Tipo de tocineta actual: {config.baconType}
+                  Tipo de tocineta actual:{" "}
+                  {config.baconType === "caramelizada"
+                    ? "caramelizada"
+                    : "asada"}
                 </p>
-                <label className="flex items-center gap-1 mb-1">
+                <label className="flex items-center gap-1 mt-1">
                   <input
                     type="checkbox"
                     checked={config.extraBacon}
@@ -505,9 +557,9 @@ function CocinaPage() {
                       handleConfigChange("extraBacon", e.target.checked)
                     }
                   />
-                  Adición de tocineta
+                  Adición de tocineta (+$3.000)
                 </label>
-                <label className="flex items-center gap-1">
+                <label className="flex items-center gap-1 mt-1">
                   <input
                     type="checkbox"
                     checked={config.extraCheese}
@@ -515,13 +567,14 @@ function CocinaPage() {
                       handleConfigChange("extraCheese", e.target.checked)
                     }
                   />
-                  Adición de queso
+                  Adición de queso (+$3.000)
                 </label>
               </div>
 
               {/* Verduras */}
               <div>
                 <span className="block mb-1">Verduras:</span>
+
                 <div className="flex flex-wrap gap-2 mb-1">
                   <button
                     type="button"
@@ -534,11 +587,12 @@ function CocinaPage() {
                     className={`px-2 py-1 rounded-full border text-[11px] ${
                       !config.noVeggies && config.lettuceOption === "normal"
                         ? "bg-emerald-300 text-slate-900 border-emerald-400"
-                        : "bg-slate-900 text-slate-100 border-slate-700"
+                        : "bg-slate-800 text-slate-100 border-slate-600"
                     }`}
                   >
                     Con verduras
                   </button>
+
                   <button
                     type="button"
                     onClick={() => {
@@ -550,7 +604,7 @@ function CocinaPage() {
                     className={`px-2 py-1 rounded-full border text-[11px] ${
                       !config.noVeggies && config.lettuceOption === "wrap"
                         ? "bg-emerald-300 text-slate-900 border-emerald-400"
-                        : "bg-slate-900 text-slate-100 border-slate-700"
+                        : "bg-slate-800 text-slate-100 border-slate-600"
                     }`}
                   >
                     Envolver en lechuga
@@ -625,7 +679,6 @@ function CocinaPage() {
                   />
                   En combo (papas incluidas)
                 </label>
-
                 <div className="flex items-center gap-2 mb-2">
                   <span>Adición de papas:</span>
                   <input
@@ -635,10 +688,10 @@ function CocinaPage() {
                     onChange={(e) =>
                       handleConfigChange("extraFriesQty", e.target.value)
                     }
-                    className="w-16 px-2 py-1 rounded bg-slate-900 border border-slate-700 text-xs outline-none"
+                    className="w-16 px-2 py-1 rounded bg-slate-800 border border-slate-600"
                   />
-                  <span className="text-[10px] text-slate-400">
-                    (adicionales)
+                  <span className="text-[10px] text-slate-300">
+                    x$5.000 c/u
                   </span>
                 </div>
 
@@ -649,12 +702,14 @@ function CocinaPage() {
                     onChange={(e) =>
                       handleConfigChange("drinkCode", e.target.value)
                     }
-                    className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-700 outline-none"
+                    className="w-full px-2 py-1 rounded bg-slate-800 border border-slate-600"
                   >
                     <option value="none">Sin bebida</option>
-                    <option value="coca">Coca-Cola personal</option>
+                    <option value="coca">
+                      Coca-Cola personal (+$4.000)
+                    </option>
                     <option value="coca_zero">
-                      Coca-Cola Zero personal
+                      Coca-Cola Zero personal (+$4.000)
                     </option>
                   </select>
                 </div>
@@ -669,51 +724,31 @@ function CocinaPage() {
                   onChange={(e) =>
                     handleConfigChange("notes", e.target.value)
                   }
-                  className="w-full px-2 py-1 rounded bg-slate-900 border border-slate-700 text-xs outline-none"
+                  className="w-full px-2 py-1 rounded bg-slate-800 border border-slate-600"
+                  placeholder="Ej: sin sal, partir a la mitad, etc."
                 />
               </div>
 
-              {/* (Opcional) mostrar precio calculado */}
-              {(() => {
-                const order = editingOrder;
-                const firstItem =
-                  order && order.items[editingItemIndex]
-                    ? order.items[editingItemIndex]
-                    : null;
-                const product = firstItem
-                  ? products.find(
-                      (p) => String(p._id) === String(firstItem.product)
-                    )
-                  : null;
-                const basePrice = product?.price || firstItem?.unitPrice || 0;
-                const unit = calculateUnitPrice(basePrice, config);
-                const qty = Number(config.quantity) || 1;
-                const subtotal = unit * qty;
-
-                return (
-                  <div className="mt-2 text-[11px] text-emerald-300">
-                    Precio por hamburguesa: {formatCOP(unit)} · Subtotal ítem:{" "}
-                    {formatCOP(subtotal)}
-                  </div>
-                );
-              })()}
-
-              <p className="mt-1 text-[10px] text-slate-400">
-                Notas: desde cocina se actualiza la configuración del ítem, pero
-                el precio también se recalcula para que el cierre de caja quede
-                correcto.
+              <p className="text-[10px] text-slate-400">
+                Desde cocina puedes ajustar la configuración del ítem. El precio
+                se recalcula automáticamente con las adiciones.
               </p>
 
               <div className="mt-3 flex gap-2">
                 <button
-                  onClick={handleSaveEditedItem}
-                  className="flex-1 py-2 rounded-full bg-emerald-400 text-slate-900 text-sm font-semibold"
+                  onClick={handleSaveItem}
+                  disabled={savingItem || !selectedProduct}
+                  className="flex-1 py-2 rounded-full bg-emerald-400 text-slate-900 text-sm font-semibold disabled:opacity-60"
                 >
-                  Guardar cambios
+                  {savingItem
+                    ? "Guardando..."
+                    : editingIndex === null
+                    ? "Agregar al pedido"
+                    : "Guardar cambios"}
                 </button>
                 <button
                   onClick={closeModal}
-                  className="flex-1 py-2 rounded-full bg-slate-900 border border-slate-600 text-slate-50 text-sm font-semibold"
+                  className="flex-1 py-2 rounded-full bg-slate-800 border border-slate-600 text-slate-100 text-sm font-semibold"
                 >
                   Cancelar
                 </button>
