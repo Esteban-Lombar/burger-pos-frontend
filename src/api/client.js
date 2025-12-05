@@ -1,3 +1,4 @@
+// src/api/client.js
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 // 🔹 Obtener productos del menú
@@ -49,8 +50,6 @@ export async function fetchPendingOrders() {
   return res.json();
 }
 
-
-
 // 🔹 Cambiar estado de una orden
 export async function updateOrderStatus(id, status) {
   const res = await fetch(`${API_URL}/orders/${id}/status`, {
@@ -66,7 +65,21 @@ export async function updateOrderStatus(id, status) {
   return res.json();
 }
 
-// 🔹 Resumen de hoy
+// 🔹 Editar orden completa (mesa, para llevar, items, etc.)
+export async function updateOrderData(id, payload) {
+  const res = await fetch(`${API_URL}/orders/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    throw new Error("Error actualizando orden");
+  }
+
+  return res.json();
+}
+
 // 🔹 Resumen de hoy / por fecha para cierre de caja (Admin)
 // Si pasas dateString = "YYYY-MM-DD" trae ese día; si no, trae hoy
 export async function fetchTodaySummary(dateString) {
@@ -84,4 +97,3 @@ export async function fetchTodaySummary(dateString) {
 
   return res.json();
 }
-

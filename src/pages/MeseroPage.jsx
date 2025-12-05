@@ -10,16 +10,20 @@ function formatCOP(value) {
 }
 
 // 💰 precios de las adiciones
+// Base: hamburguesa sola = 18.000
+// + papas -> 21.000 (+3.000)
+// + gaseosa -> 21.000 (+3.000)
+// + papas + gaseosa -> 23.000 (+6.000 - 1.000 de descuento combo)
 const ADDON_PRICES = {
-  extraMeat: 5000,     // carne adicional
-  extraBacon: 3000,    // adición de tocineta
-  extraFries: 5000,    // adición de papas
-  friesCombo: 5000,    // convertir a combo (papas incluidas)
-  drink: 4000,         // gaseosa personal
-  extraCheese: 3000,   // adición de queso
+  extraMeat: 5000,   // carne adicional
+  extraBacon: 3000,  // adición de tocineta
+  fries: 5000,       // papas incluidas (combo)
+  extraFries: 5000,  // porción adicional de papas
+  drink: 4000,       // gaseosa personal
+  extraCheese: 3000, // adición de queso
 };
 
-
+const COMBO_DISCOUNT = 1000; // descuento cuando lleva papas + gaseosa
 
 const baseConfig = {
   meatQty: 1,
@@ -44,11 +48,11 @@ function drinkLabel(code) {
   return "sin bebida";
 }
 
-// calcula el precio POR HAMBURGUESA con todos los extras
+// 🔢 calcula el precio POR HAMBURGUESA con todos los extras
 function calculateUnitPrice(product, cfg) {
   let unit = product.price || 0;
 
-  // carnes extra (la primera carne ya va incluida en el precio base)
+  // carnes extra (la primera carne ya va incluida)
   const meatQty = Number(cfg.meatQty) || 1;
   if (meatQty > 1) {
     unit += (meatQty - 1) * ADDON_PRICES.extraMeat;
@@ -62,17 +66,26 @@ function calculateUnitPrice(product, cfg) {
     unit += ADDON_PRICES.extraCheese;
   }
 
+  // papas incluidas (la porción del combo)
   if (cfg.includesFries) {
-    unit += ADDON_PRICES.friesCombo;
+    unit += ADDON_PRICES.fries; // +3.000
   }
 
+  // porciones adicionales de papas
   const extraFriesQty = Number(cfg.extraFriesQty) || 0;
   if (extraFriesQty > 0) {
-    unit += extraFriesQty * ADDON_PRICES.extraFries;
+    unit += extraFriesQty * ADDON_PRICES.extraFries; // +5.000 c/u
   }
 
-  if (cfg.drinkCode && cfg.drinkCode !== "none") {
-    unit += ADDON_PRICES.drink;
+  // gaseosa (siempre se cobra aparte, a menos que elijas "sin bebida")
+  const hasDrink = cfg.drinkCode && cfg.drinkCode !== "none";
+  if (hasDrink) {
+    unit += ADDON_PRICES.drink; // +3.000
+  }
+
+  // 💥 descuento combo: papas + gaseosa -> -1.000
+  if (cfg.includesFries && hasDrink) {
+    unit -= COMBO_DISCOUNT;
   }
 
   return unit;
@@ -89,6 +102,7 @@ function MeseroPage() {
 
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [config, setConfig] = useState(baseConfig);
+  const [editingIndex, setEditingIndex] = useState(null); // 👈 para saber si estoy editando
 
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState("");
@@ -111,8 +125,8 @@ function MeseroPage() {
     loadProducts();
   }, []);
 
-  const openConfig = (product) => {
-    // tomamos el tipo de tocineta desde el producto
+  // Abrir configurador para NUEVO item
+  const openConfigForNew = (product) => {
     const baconType =
       product.options?.tocineta === "caramelizada" ? "caramelizada" : "asada";
 
@@ -121,11 +135,50 @@ function MeseroPage() {
       ...baseConfig,
       baconType,
     });
+    setEditingIndex(null);
+  };
+
+  // Abrir configurador para EDITAR item existente
+  const openConfigForEdit = (index) => {
+    const item = items[index];
+    if (!item) return;
+
+    const product = products.find((p) => p._id === item.product);
+    if (!product) return;
+
+    setSelectedProduct(product);
+    setConfig({
+      quantity: item.quantity,
+      meatQty: item.burgerConfig?.meatQty || 1,
+      extraBacon: item.burgerConfig?.extraBacon || false,
+      extraCheese: item.burgerConfig?.extraCheese || false,
+      lettuceOption: item.burgerConfig?.lettuceOption || "normal",
+      tomato:
+        typeof item.burgerConfig?.tomato === "boolean"
+          ? item.burgerConfig.tomato
+          : true,
+      onion:
+        typeof item.burgerConfig?.onion === "boolean"
+          ? item.burgerConfig.onion
+          : true,
+      noVeggies: item.burgerConfig?.noVeggies || false,
+      includesFries: item.includesFries || false,
+      extraFriesQty: item.extraFriesQty || 0,
+      drinkCode: item.drinkCode || "none",
+      notes: item.burgerConfig?.notes || "",
+      baconType:
+        item.burgerConfig?.baconType ||
+        (product.options?.tocineta === "caramelizada"
+          ? "caramelizada"
+          : "asada"),
+    });
+    setEditingIndex(index);
   };
 
   const closeConfig = () => {
     setSelectedProduct(null);
     setConfig(baseConfig);
+    setEditingIndex(null);
   };
 
   const handleConfigChange = (field, value) => {
@@ -142,7 +195,8 @@ function MeseroPage() {
     });
   };
 
-  const handleAddItem = () => {
+  // Guardar (nuevo o editar)
+  const handleSaveItem = () => {
     if (!selectedProduct) return;
 
     const quantity = Number(config.quantity) || 1;
@@ -177,7 +231,16 @@ function MeseroPage() {
       totalPrice,
     };
 
-    setItems((prev) => [...prev, newItem]);
+    if (editingIndex !== null) {
+      // editar
+      setItems((prev) =>
+        prev.map((it, idx) => (idx === editingIndex ? newItem : it))
+      );
+    } else {
+      // nuevo
+      setItems((prev) => [...prev, newItem]);
+    }
+
     closeConfig();
   };
 
@@ -250,7 +313,7 @@ function MeseroPage() {
               {products.map((product) => (
                 <button
                   key={product._id}
-                  onClick={() => openConfig(product)}
+                  onClick={() => openConfigForNew(product)}
                   className="bg-emerald-800/70 hover:bg-emerald-700/80 text-left rounded-xl p-3 text-emerald-50 border border-emerald-700/60"
                 >
                   <div className="font-semibold text-sm">{product.name}</div>
@@ -316,8 +379,8 @@ function MeseroPage() {
                           </div>
                           {/* 🔍 Resumen super detallado para confirmar con el cliente */}
                           <div className="text-[11px] text-emerald-300">
-                            Carne: {item.burgerConfig?.meatQty || 1}x ·{" "}
-                            Toc: {item.burgerConfig?.baconType || "asada"}
+                            Carne: {item.burgerConfig?.meatQty || 1}x · Toc:{" "}
+                            {item.burgerConfig?.baconType || "asada"}
                             {item.burgerConfig?.extraBacon && " + adición"} ·{" "}
                             Queso extra:{" "}
                             {item.burgerConfig?.extraCheese ? "sí" : "no"} ·{" "}
@@ -343,12 +406,20 @@ function MeseroPage() {
                           {formatCOP(item.totalPrice || 0)}
                         </div>
                       </div>
-                      <button
-                        onClick={() => handleRemoveItem(index)}
-                        className="mt-1 text-[11px] text-red-200"
-                      >
-                        Quitar
-                      </button>
+                      <div className="mt-1 flex gap-3 text-[11px]">
+                        <button
+                          onClick={() => openConfigForEdit(index)}
+                          className="text-emerald-200 underline"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => handleRemoveItem(index)}
+                          className="text-red-200 underline"
+                        >
+                          Quitar
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -382,7 +453,7 @@ function MeseroPage() {
 
       {/* Panel configuración por persona */}
       {selectedProduct && (
-        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-40">
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify	center z-40">
           <div className="bg-emerald-950 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl border border-emerald-700 p-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-2">
               <h3 className="text-sm font-semibold text-emerald-50">
@@ -502,8 +573,7 @@ function MeseroPage() {
                     <input
                       type="checkbox"
                       checked={
-                        !config.noVeggies &&
-                        config.lettuceOption !== "sin"
+                        !config.noVeggies && config.lettuceOption !== "sin"
                       }
                       onChange={(e) => {
                         const checked = e.target.checked;
@@ -564,7 +634,7 @@ function MeseroPage() {
                       handleConfigChange("includesFries", e.target.checked)
                     }
                   />
-                  En combo (papas incluidas) (+$5.000)
+                  En combo (papas incluidas) (+$3.000)
                 </label>
                 <div className="flex items-center gap-2 mb-2">
                   <span>Adición de papas:</span>
@@ -593,10 +663,10 @@ function MeseroPage() {
                   >
                     <option value="none">Sin bebida</option>
                     <option value="coca">
-                      Coca-Cola original (+$4.000)
+                      Coca-Cola personal (+$4.000)
                     </option>
                     <option value="coca_zero">
-                      Coca-Cola Zero  (+$4.000)
+                      Coca-Cola Zero personal (+$4.000)
                     </option>
                   </select>
                 </div>
@@ -618,10 +688,10 @@ function MeseroPage() {
 
               <div className="mt-3 flex gap-2">
                 <button
-                  onClick={handleAddItem}
+                  onClick={handleSaveItem}
                   className="flex-1 py-2 rounded-full bg-amber-400 text-emerald-950 text-sm font-semibold"
                 >
-                  Agregar al pedido
+                  {editingIndex !== null ? "Guardar cambios" : "Agregar al pedido"}
                 </button>
                 <button
                   onClick={closeConfig}

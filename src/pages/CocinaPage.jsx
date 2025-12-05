@@ -1,5 +1,10 @@
+// src/pages/CocinaPage.jsx
 import { useEffect, useState } from "react";
-import { fetchOrdersByStatus, updateOrderStatus } from "../api/client";
+import {
+  fetchOrdersByStatus,
+  updateOrderStatus,
+  updateOrderData,
+} from "../api/client";
 
 function formatCOP(value) {
   return value.toLocaleString("es-CO", {
@@ -18,19 +23,6 @@ function formatTime(isoString) {
   });
 }
 
-function getVeggiesLabel(cfg) {
-  if (cfg.noVeggies) return "sin verduras";
-  if (cfg.lettuceOption === "wrap") return "envolver en lechuga";
-  if (cfg.lettuceOption === "sin") return "no lechuga";
-  return "con verduras";
-}
-
-function getDrinkLabel(code) {
-  if (code === "coca") return "Coca-Cola personal";
-  if (code === "coca_zero") return "Coca-Cola Zero personal";
-  return "Sin bebida";
-}
-
 function CocinaPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -42,7 +34,6 @@ function CocinaPage() {
       if (showSpinner) setLoading(true);
       setMessage("");
 
-      // solo pedidos pendientes
       const data = await fetchOrdersByStatus("pendiente");
       setOrders(data);
     } catch (err) {
@@ -55,23 +46,14 @@ function CocinaPage() {
   }
 
   useEffect(() => {
-    // cargar al entrar
     loadOrders(true);
-
-    // auto-refresh cada 5s
-    const interval = setInterval(() => {
-      loadOrders(false);
-    }, 5000);
-
-    return () => clearInterval(interval);
   }, []);
 
   const handleSetStatus = async (orderId, status) => {
     try {
       setUpdatingId(orderId);
       await updateOrderStatus(orderId, status);
-      await loadOrders(false); // recargar lista sin spinner grande
-
+      await loadOrders(false);
       if (status === "preparando") {
         setMessage("✅ Pedido marcado como preparando");
       } else if (status === "listo") {
@@ -84,16 +66,46 @@ function CocinaPage() {
     }
   };
 
+  const handleEditTable = async (order) => {
+    const current = order.toGo ? "" : order.tableNumber || "";
+    const input = window.prompt(
+      "Número de mesa (deja vacío para marcar como PARA LLEVAR):",
+      current.toString()
+    );
+
+    if (input === null) return; // canceló
+
+    const trimmed = input.trim();
+
+    const newTableNumber =
+      trimmed === "" ? null : Number.isNaN(Number(trimmed)) ? null : Number(trimmed);
+    const newToGo = trimmed === "";
+
+    try {
+      setUpdatingId(order._id);
+      await updateOrderData(order._id, {
+        tableNumber: newTableNumber,
+        toGo: newToGo,
+      });
+      await loadOrders(false);
+      setMessage("✅ Mesa / para llevar actualizada");
+    } catch (err) {
+      console.error(err);
+      setMessage("❌ Error editando la orden");
+      setUpdatingId(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
-      {/* Header interno */}
+      {/* Header */}
       <header className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
         <div>
           <h1 className="text-lg font-bold text-slate-900">
             Cocina – Pedidos pendientes
           </h1>
           <p className="text-sm text-slate-500">
-            Marca los pedidos como preparando o listos
+            Marca los pedidos como preparando o listos, y ajusta mesa si hace falta.
           </p>
         </div>
         <button
@@ -111,9 +123,7 @@ function CocinaPage() {
             Cargando pedidos...
           </div>
         ) : orders.length === 0 ? (
-          <p className="text-sm text-slate-600">
-            No hay pedidos pendientes.
-          </p>
+          <p className="text-sm text-slate-600">No hay pedidos pendientes.</p>
         ) : (
           <div className="space-y-3">
             {orders.map((order) => (
@@ -141,89 +151,59 @@ function CocinaPage() {
 
                 {/* items */}
                 <div className="mt-2 space-y-1 text-sm text-slate-800">
-                  {order.items?.map((item, idx) => {
-                    const cfg = item.burgerConfig || {};
-                    return (
-                      <div
-                        key={idx}
-                        className="bg-slate-50 rounded-lg px-2 py-1"
-                      >
-                        <div className="flex justify-between items-center">
-                          <div className="font-medium">
-                            {item.productName} x{item.quantity}
-                          </div>
-                          <div className="text-xs text-slate-600">
-                            {formatCOP(item.totalPrice || 0)}
-                          </div>
+                  {order.items?.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="flex justify-between items-center bg-slate-50 rounded-lg px-2 py-1"
+                    >
+                      <div>
+                        <div className="font-medium">
+                          {item.productName} x{item.quantity}
                         </div>
-
-                        {/* Línea 1: carnes, tocineta, verduras */}
-<div className="text-[11px] text-slate-600">
-  <span className="font-semibold">Carne:</span>{" "}
-  {cfg.meatQty || 1}x{" "}
-  · <span className="font-semibold">Toc.:</span>{" "}
-  {cfg.baconType || "-"}
-  {cfg.extraBacon && " (+ adición)"}{" "}
-  · <span className="font-semibold">Verduras:</span>{" "}
-  {getVeggiesLabel(cfg)}{" "}
-  · · <span className="font-semibold">Lechuga:</span>{" "}
-  {cfg.noVeggies || cfg.lettuceOption === "sin"
-  ? "no"
-  : cfg.lettuceOption === "wrap"
-  ? "wrap"
-  : "sí"}
-  · <span className="font-semibold">Tomate:</span>{" "}
-  {cfg.tomato ? "sí" : "no"}{" "}
-  · <span className="font-semibold">Cebolla:</span>{" "}
-  {cfg.onion ? "sí" : "no"}
-</div>
-
-
-                        {/* Línea 2: papas, combo, gaseosa */}
-                        <div className="text-[11px] text-slate-600">
-                          {item.includesFries && (
-                            <>
-                              <span className="font-semibold">Combo:</span>{" "}
-                              con papas{" "}
-                            </>
-                          )}
-                          {item.extraFriesQty > 0 && (
-                            <>
-                              ·{" "}
-                              <span className="font-semibold">
-                                Adición papas:
-                              </span>{" "}
-                              {item.extraFriesQty}
-                            </>
-                          )}
-                          {item.drinkCode && item.drinkCode !== "none" && (
-                            <>
-                              {" "}
-                              ·{" "}
-                              <span className="font-semibold">Bebida:</span>{" "}
-                              {getDrinkLabel(item.drinkCode)}
-                            </>
-                          )}
-                        </div>
-
-                        {/* Línea 3: notas */}
-                        {cfg.notes && cfg.notes.trim() !== "" && (
-                          <div className="text-[11px] text-slate-700 mt-0.5">
-                            <span className="font-semibold">Notas:</span>{" "}
-                            {cfg.notes}
+                        {item.burgerConfig && (
+                          <div className="text-[11px] text-slate-500">
+                            Carne: {item.burgerConfig.meatQty || 1}x · Toc:{" "}
+                            {item.burgerConfig.baconType}{" "}
+                            {item.burgerConfig.extraBacon && "+ adición"} · Queso
+                            extra: {item.burgerConfig.extraCheese ? "sí" : "no"} ·
+                            Verduras:{" "}
+                            {item.burgerConfig.noVeggies ? "sin" : "con"} ·
+                            Lechuga:{" "}
+                            {item.burgerConfig.lettuceOption === "wrap"
+                              ? "wrap"
+                              : item.burgerConfig.lettuceOption === "sin"
+                              ? "no"
+                              : "sí"}{" "}
+                            · Tomate: {item.burgerConfig.tomato ? "sí" : "no"} ·
+                            Cebolla: {item.burgerConfig.onion ? "sí" : "no"} · Combo:{" "}
+                            {item.includesFries ? "con papas" : "solo hamburguesa"}{" "}
+                            · Adic. papas: {item.extraFriesQty || 0} · Gaseosa:{" "}
+                            {item.drinkCode === "coca"
+                              ? "Coca-Cola"
+                              : item.drinkCode === "coca_zero"
+                              ? "Coca-Cola Zero"
+                              : "sin bebida"}
                           </div>
                         )}
                       </div>
-                    );
-                  })}
+                      <div className="text-xs text-slate-600">
+                        {formatCOP(item.totalPrice || 0)}
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
-                {/* botones de estado */}
-                <div className="mt-3 flex justify-end gap-2">
+                {/* botones de estado y edición */}
+                <div className="mt-3 flex flex-wrap justify-end gap-2">
                   <button
-                    onClick={() =>
-                      handleSetStatus(order._id, "preparando")
-                    }
+                    onClick={() => handleEditTable(order)}
+                    disabled={updatingId === order._id}
+                    className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-300 disabled:opacity-60"
+                  >
+                    Editar mesa / para llevar
+                  </button>
+                  <button
+                    onClick={() => handleSetStatus(order._id, "preparando")}
                     disabled={updatingId === order._id}
                     className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300 disabled:opacity-60"
                   >
@@ -237,8 +217,7 @@ function CocinaPage() {
                     disabled={updatingId === order._id}
                     className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300 disabled:opacity-60"
                   >
-                    {updatingId === order._id &&
-                    order.status === "listo"
+                    {updatingId === order._id && order.status === "listo"
                       ? "Guardando..."
                       : "Listo"}
                   </button>
