@@ -21,6 +21,13 @@ function formatTime(isoString) {
 
 function formatDateLabel(dateString) {
   if (!dateString) return "HOY";
+
+  // evitar desfase al interpretar "YYYY-MM-DD" como UTC
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    const [year, month, day] = dateString.split("-");
+    return `${day}/${month}/${year}`;
+  }
+
   const d = new Date(dateString);
   return d.toLocaleDateString("es-CO", {
     year: "numeric",
@@ -28,6 +35,7 @@ function formatDateLabel(dateString) {
     day: "2-digit",
   });
 }
+
 
 // 🔹 misma lógica que en mesero/cocina
 function drinkLabel(code) {
