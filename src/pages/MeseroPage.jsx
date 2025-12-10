@@ -221,12 +221,10 @@ function MeseroPage() {
       product: selectedProduct._id,
       productName: selectedProduct.name,
       productCode: selectedProduct.code || null,
-
       quantity,
       includesFries: config.includesFries,
       extraFriesQty: Number(config.extraFriesQty) || 0,
       drinkCode: config.drinkCode,
-
       burgerConfig,
       unitPrice,
       totalPrice,
@@ -302,30 +300,59 @@ function MeseroPage() {
   const previewQuantity = Number(config.quantity) || 1;
   const previewTotal = previewUnitPrice * previewQuantity;
 
+  const totalItems = items.reduce((sum, it) => sum + (it.quantity || 0), 0);
+
   return (
-    <div className="min-h-screen bg-emerald-900 flex flex-col">
+    <div className="min-h-screen bg-emerald-950 flex flex-col">
       {/* Header */}
-      <header className="p-4 border-b border-emerald-800 flex justify-between items-center bg-emerald-950/90">
+      <header className="p-4 border-b border-emerald-800 bg-emerald-950/95 backdrop-blur flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-lg font-bold text-emerald-50">
+          <h1 className="text-xl font-bold text-emerald-50">
             Mesero – Tomar pedido 🍔
           </h1>
-          <p className="text-xs text-emerald-200">
+          <p className="text-[11px] text-emerald-200">
             Paso 1: elige hamburguesa · Paso 2: configura · Paso 3: confirma y
             envía
           </p>
+        </div>
+
+        {/* Resumen rápido del pedido */}
+        <div className="flex flex-wrap gap-2 text-[11px]">
+          <div className="px-3 py-1 rounded-full bg-emerald-900 border border-emerald-600 text-emerald-100">
+            {toGo
+              ? "🛍 Para llevar"
+              : tableNumber
+              ? `🍽 Mesa ${tableNumber}`
+              : "🍽 Mesa sin asignar"}
+          </div>
+          <div className="px-3 py-1 rounded-full bg-emerald-900 border border-emerald-600 text-emerald-100">
+            🧾 Ítems:{" "}
+            <span className="font-semibold text-emerald-300">
+              {items.length} ({totalItems} hamburguesa(s))
+            </span>
+          </div>
+          <div className="px-3 py-1 rounded-full bg-emerald-900 border border-emerald-600 text-emerald-100">
+            💵 Total:{" "}
+            <span className="font-semibold text-amber-300">
+              {formatCOP(orderTotal)}
+            </span>
+          </div>
         </div>
       </header>
 
       <main className="flex-1 flex flex-col md:flex-row">
         {/* Menú */}
-        <section className="flex-1 p-4 border-r border-emerald-800/60">
-          <h2 className="text-sm font-semibold text-emerald-50 mb-1">
-            Paso 1 – Menú
-          </h2>
-          <p className="text-[11px] text-emerald-200 mb-3">
-            Toca una hamburguesa para configurarla.
-          </p>
+        <section className="flex-1 p-4 border-r border-emerald-900/70">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h2 className="text-sm font-semibold text-emerald-50">
+                Paso 1 – Menú de hamburguesas
+              </h2>
+              <p className="text-[11px] text-emerald-200">
+                Toca una hamburguesa para configurarla.
+              </p>
+            </div>
+          </div>
 
           {loadingProducts ? (
             <p className="text-emerald-100 text-sm">Cargando menú...</p>
@@ -344,25 +371,29 @@ function MeseroPage() {
                   <button
                     key={product._id}
                     onClick={() => openConfigForNew(product)}
-                    className={`text-left rounded-2xl p-3 border transition shadow-sm ${
+                    className={`text-left rounded-2xl p-3 border transition shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-300 ${
                       isSelected
-                        ? "bg-emerald-400 text-emerald-950 border-emerald-300 shadow-lg"
-                        : "bg-emerald-800/70 hover:bg-emerald-700/90 text-emerald-50 border-emerald-700/60"
+                        ? "bg-emerald-300 text-emerald-950 border-emerald-100 shadow-lg"
+                        : "bg-emerald-900/80 hover:bg-emerald-800 text-emerald-50 border-emerald-700/60"
                     }`}
                   >
-                    <div className="font-semibold text-sm">
-                      {product.name}
+                    <div className="flex justify-between items-start gap-2">
+                      <div>
+                        <div className="font-semibold text-sm">
+                          {product.name}
+                        </div>
+                        <div className="text-[11px] mt-0.5 uppercase text-emerald-200">
+                          {product.options?.tocineta === "caramelizada"
+                            ? "Tocineta caramelizada"
+                            : "Tocineta asada"}
+                        </div>
+                      </div>
+                      <span className="text-[11px] px-2 py-[2px] rounded-full bg-emerald-950/80 border border-emerald-600">
+                        Base {formatCOP(product.price || 0)}
+                      </span>
                     </div>
-                    <div className="text-[11px] mt-0.5 uppercase">
-                      {product.options?.tocineta === "caramelizada"
-                        ? "TOCINETA CARAMELIZADA"
-                        : "TOCINETA ASADA"}
-                    </div>
-                    <div className="mt-2 text-sm font-bold">
-                      {formatCOP(product.price || 0)}
-                    </div>
-                    <div className="mt-1 text-[10px] opacity-80">
-                      Toca para configurar
+                    <div className="mt-2 text-[10px] opacity-80">
+                      Toca para armar combo o agregar extras
                     </div>
                   </button>
                 );
@@ -372,7 +403,7 @@ function MeseroPage() {
         </section>
 
         {/* Pedido actual (barra lateral) */}
-        <section className="w-full md:w-80 lg:w-96 p-4 bg-emerald-950/90 border-l border-emerald-800/80">
+        <section className="w-full md:w-80 lg:w-96 p-4 bg-emerald-950 border-l border-emerald-900/80">
           <h2 className="text-sm font-semibold text-emerald-50 mb-1">
             Paso 3 – Pedido actual
           </h2>
@@ -380,108 +411,127 @@ function MeseroPage() {
             Revisa con el cliente y envía a cocina.
           </p>
 
-          {/* Mesa / para llevar */}
-          <div className="space-y-2 text-sm text-emerald-50">
-            <div className="flex items-center justify-between gap-2 bg-emerald-900/80 border border-emerald-700 rounded-xl px-2 py-2">
-              <label className="text-xs text-emerald-200">Mesa:</label>
-              <input
-                type="number"
-                min="1"
-                disabled={toGo}
-                value={tableNumber}
-                onChange={(e) => setTableNumber(e.target.value)}
-                className="flex-1 px-2 py-1 rounded bg-emerald-950 border border-emerald-700 text-xs text-emerald-50 outline-none"
-              />
-              <label className="flex items-center gap-1 text-[11px] text-emerald-200">
+          <div className="space-y-3 text-sm text-emerald-50">
+            {/* Mesa / para llevar */}
+            <div className="bg-emerald-900/90 border border-emerald-700 rounded-2xl px-3 py-3 space-y-2">
+              <p className="text-[11px] text-emerald-200 mb-1 font-semibold">
+                Selecciona mesa o marca para llevar:
+              </p>
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-xs text-emerald-200">Mesa:</label>
                 <input
-                  type="checkbox"
-                  checked={toGo}
-                  onChange={(e) => setToGo(e.target.checked)}
+                  type="number"
+                  min="1"
+                  disabled={toGo}
+                  value={tableNumber}
+                  onChange={(e) => setTableNumber(e.target.value)}
+                  className="flex-1 px-2 py-1 rounded bg-emerald-950 border border-emerald-700 text-xs text-emerald-50 outline-none"
                 />
-                Para llevar
-              </label>
+                <label className="flex items-center gap-1 text-[11px] text-emerald-200">
+                  <input
+                    type="checkbox"
+                    checked={toGo}
+                    onChange={(e) => setToGo(e.target.checked)}
+                  />
+                  Para llevar
+                </label>
+              </div>
             </div>
 
             {/* Items */}
-            <div className="mt-2 border-t border-emerald-800/80 pt-2">
-              {items.length === 0 ? (
-                <p className="text-xs text-emerald-200">
-                  Aún no has agregado productos.
+            <div className="bg-emerald-900/90 border border-emerald-700 rounded-2xl px-3 py-3">
+              <div className="flex justify-between items-center mb-1">
+                <p className="text-xs font-semibold text-emerald-100">
+                  Ítems del pedido ({items.length})
                 </p>
-              ) : (
-                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                  {items.map((item, index) => (
-                    <div
-                      key={index}
-                      className="bg-emerald-900/90 rounded-xl p-2 border border-emerald-700/80"
-                    >
-                      <div className="flex justify-between items-start gap-2">
-                        <div className="flex-1">
-                          <div className="font-semibold text-xs">
-                            {item.productName} x{item.quantity}
+                <span className="text-[11px] text-emerald-300">
+                  {totalItems} hamburguesa(s)
+                </span>
+              </div>
+
+              <div className="mt-1 border-t border-emerald-800/80 pt-2">
+                {items.length === 0 ? (
+                  <p className="text-xs text-emerald-200">
+                    Aún no has agregado productos.
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {items.map((item, index) => (
+                      <div
+                        key={index}
+                        className="bg-emerald-950/90 rounded-xl p-2 border border-emerald-700/80"
+                      >
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="flex-1">
+                            <div className="font-semibold text-xs">
+                              {item.productName} x{item.quantity}
+                            </div>
+                            {/* 🔍 Resumen super detallado para confirmar con el cliente */}
+                            <div className="text-[11px] text-emerald-300 leading-4 mt-0.5">
+                              Carne: {item.burgerConfig?.meatQty || 1}x · Toc:{" "}
+                              {item.burgerConfig?.baconType || "asada"}
+                              {item.burgerConfig?.extraBacon && " + adición"} ·{" "}
+                              Queso extra:{" "}
+                              {item.burgerConfig?.extraCheese ? "sí" : "no"} ·{" "}
+                              Verduras:{" "}
+                              {item.burgerConfig?.noVeggies ? "sin" : "con"} ·{" "}
+                              Lechuga:{" "}
+                              {item.burgerConfig?.lettuceOption === "wrap"
+                                ? "wrap"
+                                : item.burgerConfig?.lettuceOption === "sin"
+                                ? "no"
+                                : "sí"}{" "}
+                              · Tomate:{" "}
+                              {item.burgerConfig?.tomato ? "sí" : "no"} ·
+                              Cebolla:{" "}
+                              {item.burgerConfig?.onion ? "sí" : "no"} · Combo:{" "}
+                              {item.includesFries
+                                ? "con papas"
+                                : "solo hamburguesa"}{" "}
+                              · Adic. papas: {item.extraFriesQty || 0} ·
+                              Gaseosa: {drinkLabel(item.drinkCode)}
+                              {item.burgerConfig?.notes && (
+                                <>
+                                  <br />
+                                  <span className="text-amber-200">
+                                    📝 {item.burgerConfig.notes}
+                                  </span>
+                                </>
+                              )}
+                            </div>
                           </div>
-                          {/* 🔍 Resumen super detallado para confirmar con el cliente */}
-                          <div className="text-[11px] text-emerald-300 leading-4 mt-0.5">
-                            Carne: {item.burgerConfig?.meatQty || 1}x · Toc:{" "}
-                            {item.burgerConfig?.baconType || "asada"}
-                            {item.burgerConfig?.extraBacon && " + adición"} ·{" "}
-                            Queso extra:{" "}
-                            {item.burgerConfig?.extraCheese ? "sí" : "no"} ·{" "}
-                            Verduras:{" "}
-                            {item.burgerConfig?.noVeggies ? "sin" : "con"} ·{" "}
-                            Lechuga:{" "}
-                            {item.burgerConfig?.lettuceOption === "wrap"
-                              ? "wrap"
-                              : item.burgerConfig?.lettuceOption === "sin"
-                              ? "no"
-                              : "sí"}{" "}
-                            · Tomate:{" "}
-                            {item.burgerConfig?.tomato ? "sí" : "no"} · Cebolla:{" "}
-                            {item.burgerConfig?.onion ? "sí" : "no"} · Combo:{" "}
-                            {item.includesFries
-                              ? "con papas"
-                              : "solo hamburguesa"}{" "}
-                            · Adic. papas: {item.extraFriesQty || 0} · Gaseosa:{" "}
-                            {drinkLabel(item.drinkCode)}
-                            {item.burgerConfig?.notes && (
-                              <>
-                                <br />
-                                <span className="text-amber-200">
-                                  📝 {item.burgerConfig.notes}
-                                </span>
-                              </>
-                            )}
+                          <div className="text-xs font-bold text-amber-200 whitespace-nowrap">
+                            {formatCOP(item.totalPrice || 0)}
                           </div>
                         </div>
-                        <div className="text-xs font-bold text-amber-200 whitespace-nowrap">
-                          {formatCOP(item.totalPrice || 0)}
+                        <div className="mt-1 flex gap-3 text-[11px]">
+                          <button
+                            onClick={() => openConfigForEdit(index)}
+                            className="text-emerald-200 underline"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => handleRemoveItem(index)}
+                            className="text-red-200 underline"
+                          >
+                            Quitar
+                          </button>
                         </div>
                       </div>
-                      <div className="mt-1 flex gap-3 text-[11px]">
-                        <button
-                          onClick={() => openConfigForEdit(index)}
-                          className="text-emerald-200 underline"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          onClick={() => handleRemoveItem(index)}
-                          className="text-red-200 underline"
-                        >
-                          Quitar
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Total y enviar */}
-            <div className="mt-3 border-t border-emerald-800/80 pt-2 text-xs">
+            <div className="bg-emerald-900/90 border border-emerald-700 rounded-2xl px-3 py-3 text-xs">
               <div className="flex justify-between mb-2">
-                <span className="text-emerald-200">Total pedido:</span>
-                <span className="font-bold text-amber-300">
+                <span className="text-emerald-200 font-semibold">
+                  Total pedido:
+                </span>
+                <span className="font-bold text-amber-300 text-sm">
                   {formatCOP(orderTotal)}
                 </span>
               </div>
@@ -499,7 +549,9 @@ function MeseroPage() {
               )}
 
               {message && (
-                <p className="mt-1 text-[11px] text-emerald-200">{message}</p>
+                <p className="mt-1 text-[11px] text-emerald-200">
+                  {message}
+                </p>
               )}
             </div>
           </div>
@@ -509,16 +561,21 @@ function MeseroPage() {
       {/* Panel configuración por persona */}
       {selectedProduct && (
         <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-40">
-          <div className="bg-emerald-950 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl border border-emerald-700 p-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-2">
-              <h3 className="text-sm font-semibold text-emerald-50">
-                Paso 2 – Configurar {selectedProduct.name}
-              </h3>
+          <div className="bg-emerald-950 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl border border-emerald-700 p-4 max-h-[90vh] overflow-y-auto shadow-xl">
+            <div className="flex justify-between items-center mb-3">
+              <div>
+                <h3 className="text-sm font-semibold text-emerald-50">
+                  Paso 2 – Configurar {selectedProduct.name}
+                </h3>
+                <p className="text-[11px] text-emerald-200">
+                  Ajusta carnes, verduras, papas, gaseosa y notas.
+                </p>
+              </div>
               <button
                 onClick={closeConfig}
-                className="text-xs text-emerald-300"
+                className="text-xs text-emerald-300 hover:text-emerald-100"
               >
-                Cerrar
+                Cerrar ✕
               </button>
             </div>
 
@@ -552,8 +609,10 @@ function MeseroPage() {
               </div>
 
               {/* Tocineta y queso */}
-              <div>
-                <span className="block mb-1">Tocineta y queso:</span>
+              <div className="border border-emerald-800 rounded-xl p-2 bg-emerald-900/60">
+                <span className="block mb-1 font-semibold text-[11px]">
+                  Tocineta y queso
+                </span>
                 <p className="text-[11px] text-emerald-200 mb-1">
                   Tipo de tocineta actual: {config.baconType}
                 </p>
@@ -580,8 +639,10 @@ function MeseroPage() {
               </div>
 
               {/* Verduras */}
-              <div>
-                <span className="block mb-1">Verduras:</span>
+              <div className="border border-emerald-800 rounded-xl p-2 bg-emerald-900/60">
+                <span className="block mb-1 font-semibold text-[11px]">
+                  Verduras
+                </span>
 
                 {/* botones generales */}
                 <div className="flex flex-wrap gap-2 mb-1">
@@ -621,7 +682,7 @@ function MeseroPage() {
                 </div>
 
                 {/* checkboxes individuales */}
-                <div className="flex flex-wrap gap-3">
+                <div className="flex flex-wrap gap-3 mt-1">
                   <label className="flex items-center gap-1">
                     <input
                       type="checkbox"
@@ -677,8 +738,10 @@ function MeseroPage() {
               </div>
 
               {/* Papas y gaseosa */}
-              <div>
-                <span className="block mb-1">Papas y gaseosa:</span>
+              <div className="border border-emerald-800 rounded-xl p-2 bg-emerald-900/60">
+                <span className="block mb-1 font-semibold text-[11px]">
+                  Papas y gaseosa
+                </span>
                 <label className="flex items-center gap-1 mb-1">
                   <input
                     type="checkbox"
@@ -724,8 +787,10 @@ function MeseroPage() {
               </div>
 
               {/* Notas */}
-              <div>
-                <span className="block mb-1">Notas para cocina:</span>
+              <div className="border border-emerald-800 rounded-xl p-2 bg-emerald-900/60">
+                <span className="block mb-1 font-semibold text-[11px]">
+                  Notas para cocina
+                </span>
                 <textarea
                   rows={2}
                   value={config.notes}
@@ -758,7 +823,9 @@ function MeseroPage() {
                   onClick={handleSaveItem}
                   className="flex-1 py-2 rounded-full bg-amber-400 text-emerald-950 text-sm font-semibold"
                 >
-                  {editingIndex !== null ? "Guardar cambios" : "Agregar al pedido"}
+                  {editingIndex !== null
+                    ? "Guardar cambios"
+                    : "Agregar al pedido"}
                 </button>
                 <button
                   onClick={closeConfig}

@@ -149,7 +149,10 @@ export default function CocinaPage() {
 
   // Actualizar mesa / para llevar
   const editMesa = async (order) => {
-    let mesa = prompt("Número de mesa (deja vacío para PARA LLEVAR):", order.tableNumber ?? "");
+    let mesa = prompt(
+      "Número de mesa (deja vacío para PARA LLEVAR):",
+      order.tableNumber ?? ""
+    );
     if (mesa === null) return;
 
     await updateOrderData(order._id, {
@@ -167,170 +170,270 @@ export default function CocinaPage() {
   };
 
   return (
-    <div className="p-4">
-      <h1 className="text-xl mb-3">Cocina – Pedidos pendientes</h1>
+    <div className="min-h-screen bg-slate-900 flex flex-col">
+      {/* Header */}
+      <header className="p-4 border-b border-slate-800 bg-slate-950/95 backdrop-blur flex items-center justify-between">
+        <div>
+          <h1 className="text-lg md:text-xl font-bold text-slate-50">
+            Cocina – Pedidos pendientes 👨‍🍳
+          </h1>
+          <p className="text-[11px] text-slate-300">
+            Ve las mesas, ajusta pedidos y marca como preparando / listo.
+          </p>
+        </div>
 
-      <button onClick={loadOrders} className="mb-3 px-3 py-1 bg-green-600 text-white rounded">
-        Actualizar
-      </button>
+        <button
+          onClick={loadOrders}
+          className="px-3 py-1.5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-sm font-semibold shadow"
+        >
+          Actualizar
+        </button>
+      </header>
 
-      {loading && <p>Cargando...</p>}
-      {error && <p className="text-red-400">{error}</p>}
+      {/* Contenido */}
+      <main className="flex-1 p-4">
+        {loading && (
+          <div className="text-sm text-slate-300 mb-3">Cargando pedidos…</div>
+        )}
+        {error && (
+          <div className="text-sm text-red-400 mb-3">{error}</div>
+        )}
 
-      <div className="space-y-4">
-        {orders.map((order) => (
-          <div key={order._id} className="border border-slate-600 rounded p-3 bg-[#0b200b]">
-            <div className="flex justify-between">
+        {orders.length === 0 && !loading ? (
+          <p className="text-sm text-slate-400">
+            No hay pedidos pendientes en este momento.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {orders.map((order) => (
               <div
-  className={`font-bold text-lg ${
-    order.toGo ? "text-orange-400" : "text-blue-400"
-  }`}
->
-  {order.toGo ? "PARA LLEVAR" : `Mesa ${order.tableNumber}`}
-</div>
-
-              <div className="text-green-300 font-bold">
-                Total: ${order.total?.toLocaleString("es-CO")}
-              </div>
-            </div>
-
-            {/* ----------------------
-                DETALLE COMPLETO
-            ----------------------- */}
-            <div className="mt-1 text-[12px] text-slate-400">
-              {order.items.map((item, idx) => (
-                <div key={idx} className="mb-1">
-                  <div className="font-semibold text-sm text-white">
-                    {item.productName} x{item.quantity}
-                  </div>
-
-                  <div className="text-[11px] text-slate-300">
-                    Carne: {item.burgerConfig?.meatQty || 1}x · Toc:{" "}
-                    {item.burgerConfig?.baconType || "asada"}
-                    {item.burgerConfig?.extraBacon && " + adic. toc"} · Queso ext:{" "}
-                    {item.burgerConfig?.extraCheese ? "sí" : "no"} · Verduras:{" "}
-                    {item.burgerConfig?.noVeggies ? "sin" : "con"} · Lechuga:{" "}
-                    {item.burgerConfig?.lettuceOption} · Tomate:{" "}
-                    {item.burgerConfig?.tomato ? "sí" : "no"} · Cebolla:{" "}
-                    {item.burgerConfig?.onion ? "sí" : "no"} · Combo:{" "}
-                    {item.includesFries ? "con papas" : "solo"} · Adic papas:{" "}
-                    {item.extraFriesQty} · Gaseosa: {drinkLabel(item.drinkCode)}
-                  </div>
-
-                  {item.burgerConfig?.notes?.trim() !== "" && (
-                    <div className="text-[11px] text-yellow-300 font-semibold">
-                      Nota cocina: {item.burgerConfig.notes}
+                key={order._id}
+                className="bg-slate-950/90 border border-slate-700 rounded-2xl p-3 shadow-sm"
+              >
+                {/* Encabezado de la tarjeta */}
+                <div className="flex justify-between items-start gap-2">
+                  <div>
+                    <div
+                      className={`text-sm md:text-base font-bold ${
+                        order.toGo ? "text-orange-300" : "text-emerald-300"
+                      }`}
+                    >
+                      {order.toGo
+                        ? "🛍 PARA LLEVAR"
+                        : `🍽 Mesa ${order.tableNumber}`}
                     </div>
-                  )}
+                    <div className="mt-1 flex flex-wrap gap-1 text-[10px] text-slate-300">
+                      <span className="px-2 py-[2px] rounded-full border border-slate-600 bg-slate-900">
+                        Estado:{" "}
+                        <span className="font-semibold text-emerald-300">
+                          {(order.status || "pendiente").toUpperCase()}
+                        </span>
+                      </span>
+                      <span className="px-2 py-[2px] rounded-full border border-slate-600 bg-slate-900">
+                        Ítems: {order.items?.length || 0}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <div className="text-[11px] text-slate-300">
+                      Total pedido
+                    </div>
+                    <div className="text-sm md:text-base font-bold text-emerald-300">
+                      $
+                      {order.total?.toLocaleString("es-CO", {
+                        maximumFractionDigits: 0,
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* DETALLE COMPLETO */}
+                <div className="mt-2 text-[12px] text-slate-300 border-t border-slate-700 pt-2 space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {order.items.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="bg-slate-900/80 border border-slate-700 rounded-lg p-2"
+                    >
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="flex-1">
+                          <div className="font-semibold text-[13px] text-slate-50">
+                            {item.productName} x{item.quantity}
+                          </div>
+
+                          <div className="text-[11px] text-slate-300 leading-4 mt-0.5">
+                            Carne: {item.burgerConfig?.meatQty || 1}x · Toc:{" "}
+                            {item.burgerConfig?.baconType || "asada"}
+                            {item.burgerConfig?.extraBacon &&
+                              " + adic. toc"}{" "}
+                            · Queso ext:{" "}
+                            {item.burgerConfig?.extraCheese ? "sí" : "no"} ·
+                            Verduras:{" "}
+                            {item.burgerConfig?.noVeggies ? "sin" : "con"} ·
+                            Lechuga: {item.burgerConfig?.lettuceOption} ·
+                            Tomate: {item.burgerConfig?.tomato ? "sí" : "no"} ·
+                            Cebolla: {item.burgerConfig?.onion ? "sí" : "no"} ·
+                            Combo:{" "}
+                            {item.includesFries ? "con papas" : "solo"} · Adic
+                            papas: {item.extraFriesQty} · Gaseosa:{" "}
+                            {drinkLabel(item.drinkCode)}
+                          </div>
+
+                          {item.burgerConfig?.notes?.trim() !== "" && (
+                            <div className="text-[11px] text-yellow-300 font-semibold mt-1">
+                              📝 Nota cocina: {item.burgerConfig.notes}
+                            </div>
+                          )}
+                        </div>
+
+                        {item.totalPrice != null && (
+                          <div className="text-[11px] font-bold text-emerald-300 whitespace-nowrap">
+                            $
+                            {item.totalPrice.toLocaleString("es-CO", {
+                              maximumFractionDigits: 0,
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        className="mt-1 text-[11px] text-sky-300 underline"
+                        onClick={() => openItemEditor(order, idx)}
+                      >
+                        Editar item
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Botones de acción */}
+                <div className="mt-3 flex flex-wrap gap-2 text-sm">
+                  <button
+                    className="px-3 py-1.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-600"
+                    onClick={() => editMesa(order)}
+                  >
+                    Editar mesa / para llevar
+                  </button>
 
                   <button
-                    className="text-[11px] text-blue-300 underline mt-1"
-                    onClick={() => openItemEditor(order, idx)}
+                    className="px-3 py-1.5 rounded-full bg-yellow-500 hover:bg-yellow-400 text-black font-semibold"
+                    onClick={() => changeStatus(order, "preparando")}
                   >
-                    Editar item
+                    Preparando
+                  </button>
+
+                  <button
+                    className="px-3 py-1.5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold"
+                    onClick={() => changeStatus(order, "listo")}
+                  >
+                    Listo
                   </button>
                 </div>
-              ))}
-            </div>
-
-            <div className="mt-2 flex gap-2">
-              <button
-                className="px-2 py-1 bg-blue-600 text-white rounded text-sm"
-                onClick={() => editMesa(order)}
-              >
-                Editar mesa / para llevar
-              </button>
-
-              <button
-                className="px-2 py-1 bg-yellow-500 text-black rounded text-sm"
-                onClick={() => changeStatus(order, "preparando")}
-              >
-                Preparando
-              </button>
-
-              <button
-                className="px-2 py-1 bg-green-500 text-white rounded text-sm"
-                onClick={() => changeStatus(order, "listo")}
-              >
-                Listo
-              </button>
-            </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        )}
+      </main>
 
       {/* Modal edición */}
       {config && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-[#102030] p-4 rounded-xl w-[380px] text-white">
-            <h2 className="text-lg font-semibold mb-2">Editar ítem</h2>
+          <div className="bg-slate-950 w-full max-w-sm mx-4 p-4 rounded-2xl border border-slate-700 shadow-xl text-slate-50">
+            <div className="flex justify-between items-center mb-2">
+              <h2 className="text-sm font-semibold">
+                Editar ítem de cocina
+              </h2>
+              <button
+                onClick={() => {
+                  setConfig(null);
+                  setEditingOrder(null);
+                  setEditingIndex(null);
+                }}
+                className="text-[11px] text-slate-300 hover:text-slate-100"
+              >
+                Cerrar ✕
+              </button>
+            </div>
 
             {/* Configuración del item */}
-            <div className="space-y-2 text-sm">
-              <label>
-                Cantidad:
+            <div className="space-y-2 text-xs">
+              <label className="block">
+                <span className="text-slate-200">Cantidad:</span>
                 <input
                   type="number"
                   value={config.quantity}
-                  onChange={(e) => handleConfigChange("quantity", e.target.value)}
-                  className="w-full mt-1 rounded bg-slate-800 border border-slate-600 p-1"
+                  onChange={(e) =>
+                    handleConfigChange("quantity", e.target.value)
+                  }
+                  className="w-full mt-1 rounded bg-slate-900 border border-slate-700 p-1 outline-none"
                 />
               </label>
 
-              <label>
-                Carnes:
+              <label className="block">
+                <span className="text-slate-200">Carnes:</span>
                 <input
                   type="number"
                   value={config.meatQty}
-                  onChange={(e) => handleConfigChange("meatQty", e.target.value)}
-                  className="w-full mt-1 rounded bg-slate-800 border border-slate-600 p-1"
+                  onChange={(e) =>
+                    handleConfigChange("meatQty", e.target.value)
+                  }
+                  className="w-full mt-1 rounded bg-slate-900 border border-slate-700 p-1 outline-none"
                 />
               </label>
 
-              <label>
-                Tipo de tocineta:
+              <label className="block">
+                <span className="text-slate-200">Tipo de tocineta:</span>
                 <select
                   value={config.baconType}
-                  onChange={(e) => handleConfigChange("baconType", e.target.value)}
-                  className="w-full mt-1 rounded bg-slate-800 border border-slate-600 p-1"
+                  onChange={(e) =>
+                    handleConfigChange("baconType", e.target.value)
+                  }
+                  className="w-full mt-1 rounded bg-slate-900 border border-slate-700 p-1 outline-none"
                 >
                   <option value="asada">Asada</option>
                   <option value="caramelizada">Caramelizada</option>
                 </select>
               </label>
 
-              <label className="flex items-center gap-2">
+              <label className="flex items-center gap-2 mt-1">
                 <input
                   type="checkbox"
                   checked={config.extraBacon}
-                  onChange={(e) => handleConfigChange("extraBacon", e.target.checked)}
+                  onChange={(e) =>
+                    handleConfigChange("extraBacon", e.target.checked)
+                  }
                 />
-                Extra tocineta
+                <span>Extra tocineta</span>
               </label>
 
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
                   checked={config.extraCheese}
-                  onChange={(e) => handleConfigChange("extraCheese", e.target.checked)}
+                  onChange={(e) =>
+                    handleConfigChange("extraCheese", e.target.checked)
+                  }
                 />
-                Extra queso
+                <span>Extra queso</span>
               </label>
 
-              <label>
-                Notas:
+              <label className="block">
+                <span className="text-slate-200">Notas:</span>
                 <textarea
                   value={config.notes}
-                  onChange={(e) => handleConfigChange("notes", e.target.value)}
-                  className="w-full mt-1 rounded bg-slate-800 border border-slate-600 p-1"
+                  onChange={(e) =>
+                    handleConfigChange("notes", e.target.value)
+                  }
+                  className="w-full mt-1 rounded bg-slate-900 border border-slate-700 p-1 outline-none"
+                  rows={2}
                 />
               </label>
             </div>
 
-            <div className="flex mt-4 gap-2">
+            <div className="flex mt-4 gap-2 text-sm">
               <button
                 onClick={saveItemChanges}
-                className="flex-1 bg-green-600 py-1 rounded"
+                className="flex-1 bg-emerald-500 hover:bg-emerald-400 py-1.5 rounded-full text-slate-950 font-semibold"
               >
                 Guardar cambios
               </button>
@@ -338,8 +441,9 @@ export default function CocinaPage() {
                 onClick={() => {
                   setConfig(null);
                   setEditingOrder(null);
+                  setEditingIndex(null);
                 }}
-                className="flex-1 bg-red-600 py-1 rounded"
+                className="flex-1 bg-red-600 hover:bg-red-500 py-1.5 rounded-full font-semibold"
               >
                 Cancelar
               </button>
