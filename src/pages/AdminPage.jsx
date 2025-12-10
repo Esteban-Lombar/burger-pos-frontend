@@ -11,6 +11,7 @@ function formatCOP(value) {
 }
 
 function formatTime(isoString) {
+  if (!isoString) return "";
   const d = new Date(isoString);
   return d.toLocaleTimeString("es-CO", {
     hour: "2-digit",
@@ -26,6 +27,13 @@ function formatDateLabel(dateString) {
     month: "2-digit",
     day: "2-digit",
   });
+}
+
+// 🔹 misma lógica que en mesero/cocina
+function drinkLabel(code) {
+  if (code === "coca") return "Coca-Cola";
+  if (code === "coca_zero") return "Coca-Cola Zero";
+  return "sin bebida";
 }
 
 function AdminPage() {
@@ -162,31 +170,92 @@ function AdminPage() {
               No hay pedidos registrados para esta fecha.
             </p>
           ) : (
-            <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto">
               {summary.orders.map((order) => (
                 <div
                   key={order._id}
-                  className="flex justify-between items-center bg-slate-900 rounded-lg border border-slate-700 px-3 py-2"
+                  className="bg-slate-900 rounded-lg border border-slate-700 px-3 py-3 space-y-2"
                 >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-slate-100">
-                        {order.toGo
-                          ? "Para llevar"
-                          : `Mesa ${order.tableNumber || "N/A"}`}
-                      </span>
-                      <span className="text-[10px] px-2 py-[2px] rounded-full bg-emerald-900 text-emerald-200 border border-emerald-500">
-                        {(order.status || "listo").toUpperCase()}
-                      </span>
+                  {/* Encabezado del pedido */}
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-slate-100">
+                          {order.toGo
+                            ? "PARA LLEVAR"
+                            : `Mesa ${order.tableNumber || "N/A"}`}
+                        </span>
+                        <span className="text-[10px] px-2 py-[2px] rounded-full bg-emerald-900 text-emerald-200 border border-emerald-500">
+                          {(order.status || "listo").toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        {formatTime(order.createdAt)} ·{" "}
+                        {order.items?.length || 0} ítem(s)
+                      </div>
                     </div>
-                    <div className="text-[11px] text-slate-400">
-                      {formatTime(order.createdAt)} ·{" "}
-                      {order.items?.length || 0} ítem(s)
+
+                    <div className="text-sm font-semibold text-emerald-300">
+                      {formatCOP(order.total || 0)}
                     </div>
                   </div>
 
-                  <div className="text-sm font-semibold text-emerald-300">
-                    {formatCOP(order.total || 0)}
+                  {/* Detalle de ítems – EXACTO qué se vendió */}
+                  <div className="space-y-2 text-xs text-slate-200 mt-1">
+                    {order.items.map((item, idx) => (
+                      <div
+                        key={idx}
+                        className="border border-slate-600 rounded-md p-2 bg-slate-800"
+                      >
+                        {/* nombre y cantidad */}
+                        <div className="font-semibold text-amber-300">
+                          {item.productName} x{item.quantity}
+                        </div>
+
+                        {/* descripción detallada */}
+                        <div className="text-[11px] text-slate-300 mt-1 leading-5">
+                          Carne: {item.burgerConfig?.meatQty || 1}x · Toc:{" "}
+                          {item.burgerConfig?.baconType || "asada"} · Queso
+                          extra:{" "}
+                          {item.burgerConfig?.extraCheese ? "sí" : "no"} ·
+                          Tocineta extra:{" "}
+                          {item.burgerConfig?.extraBacon ? "sí" : "no"}
+                          <br />
+                          Verduras:{" "}
+                          {item.burgerConfig?.noVeggies
+                            ? "sin"
+                            : `Lechuga: ${
+                                item.burgerConfig?.lettuceOption === "wrap"
+                                  ? "wrap"
+                                  : item.burgerConfig?.lettuceOption === "sin"
+                                  ? "no"
+                                  : "sí"
+                              }, Tomate: ${
+                                item.burgerConfig?.tomato ? "sí" : "no"
+                              }, Cebolla: ${
+                                item.burgerConfig?.onion ? "sí" : "no"
+                              }`}
+                          <br />
+                          Combo:{" "}
+                          {item.includesFries
+                            ? "con papas"
+                            : "solo hamburguesa"}{" "}
+                          · Adic. papas: {item.extraFriesQty || 0} · Gaseosa:{" "}
+                          {drinkLabel(item.drinkCode)}
+                          <br />
+                          {item.burgerConfig?.notes && (
+                            <span className="text-yellow-300">
+                              📝 Nota: {item.burgerConfig.notes}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* total del ítem */}
+                        <div className="font-bold text-right text-emerald-300 text-xs mt-1">
+                          {formatCOP(item.totalPrice || 0)}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
