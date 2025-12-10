@@ -1,3 +1,4 @@
+// src/pages/MeseroPage.jsx
 import { useEffect, useState } from "react";
 import { fetchProducts, createOrder } from "../api/client";
 
@@ -10,10 +11,6 @@ function formatCOP(value) {
 }
 
 // 💰 precios de las adiciones
-// Base: hamburguesa sola = 18.000
-// + papas -> 21.000 (+3.000)
-// + gaseosa -> 21.000 (+3.000)
-// + papas + gaseosa -> 23.000 (+6.000 - 1.000 de descuento combo)
 const ADDON_PRICES = {
   extraMeat: 5000, // carne adicional
   extraBacon: 3000, // adición de tocineta
@@ -49,13 +46,14 @@ function drinkLabel(code) {
 }
 
 // 🔢 calcula el precio POR HAMBURGUESA con todos los extras
-function calculateUnitPrice(product, cfg) {
-  let unit = product.price || 0;
+// ahora recibe cuántas carnes ya van incluidas en el precio base
+function calculateUnitPrice(basePrice, cfg, includedMeats = 1) {
+  let unit = basePrice || 0;
 
-  // carnes extra (la primera carne ya va incluida)
+  // carnes extra: solo se cobra por encima de las incluidas
   const meatQty = Number(cfg.meatQty) || 1;
-  if (meatQty > 1) {
-    unit += (meatQty - 1) * ADDON_PRICES.extraMeat;
+  if (meatQty > includedMeats) {
+    unit += (meatQty - includedMeats) * ADDON_PRICES.extraMeat;
   }
 
   if (cfg.extraBacon) {
@@ -77,7 +75,7 @@ function calculateUnitPrice(product, cfg) {
     unit += extraFriesQty * ADDON_PRICES.extraFries; // +5.000 c/u
   }
 
-  // gaseosa (siempre se cobra aparte, a menos que elijas "sin bebida")
+  // gaseosa
   const hasDrink = cfg.drinkCode && cfg.drinkCode !== "none";
   if (hasDrink) {
     unit += ADDON_PRICES.drink; // +4.000
@@ -126,15 +124,51 @@ function MeseroPage() {
     loadProducts();
   }, []);
 
+  // ------------------------------
+  // helpers para cards sencillas/dobles
+  // ------------------------------
+  // Sencillas: 1 carne incluida
+  const singleProducts = products.map((p) => ({
+    ...p,
+    uiId: p._id + "-single",
+    uiName: p.name,
+    basePriceOverride: p.price,
+    includedMeats: 1,
+    baseProductId: p._id,
+  }));
+
+  // Dobles: 2 carnes incluidas, base = precio sencilla + 5.000
+  const doubleProducts = products.map((p) => ({
+    ...p,
+    uiId: p._id + "-double",
+    uiName: `${p.name} (doble carne)`,
+    basePriceOverride: (p.price || 0) + ADDON_PRICES.extraMeat, // 18k + 5k = 23k
+    includedMeats: 2,
+    baseProductId: p._id,
+  }));
+
   // Abrir configurador para NUEVO item
-  const openConfigForNew = (product) => {
+  const openConfigForNew = (product, options = {}) => {
     const baconType =
       product.options?.tocineta === "caramelizada" ? "caramelizada" : "asada";
 
-    setSelectedProduct(product);
+    const initialMeatQty =
+      typeof options.initialMeatQty === "number"
+        ? options.initialMeatQty
+        : product.includedMeats || 1;
+
+    setSelectedProduct({
+      ...product,
+      basePriceOverride:
+        options.basePriceOverride ?? product.basePriceOverride ?? product.price,
+      baseProductId: product.baseProductId || product._id,
+      includedMeats: product.includedMeats || 1,
+    });
+
     setConfig({
       ...baseConfig,
       baconType,
+      meatQty: initialMeatQty,
     });
     setEditingIndex(null);
   };
@@ -147,7 +181,14 @@ function MeseroPage() {
     const product = products.find((p) => p._id === item.product);
     if (!product) return;
 
-    setSelectedProduct(product);
+    setSelectedProduct({
+      ...product,
+      basePriceOverride: item.basePrice || product.price,
+      baseProductId: product._id,
+      includedMeats: item.burgerConfig?.includedMeats || 1,
+      uiName: item.productName,
+    });
+
     setConfig({
       quantity: item.quantity,
       meatQty: item.burgerConfig?.meatQty || 1,
@@ -201,7 +242,14 @@ function MeseroPage() {
     if (!selectedProduct) return;
 
     const quantity = Number(config.quantity) || 1;
-    const unitPrice = calculateUnitPrice(selectedProduct, config);
+    const basePrice =
+      typeof selectedProduct.basePriceOverride === "number"
+        ? selectedProduct.basePriceOverride
+        : selectedProduct.price || 0;
+
+    const includedMeats = selectedProduct.includedMeats || 1;
+
+    const unitPrice = calculateUnitPrice(basePrice, config, includedMeats);
     const totalPrice = unitPrice * quantity;
 
     const burgerConfig = {
@@ -215,11 +263,12 @@ function MeseroPage() {
       onion: config.onion,
       noVeggies: config.noVeggies,
       notes: config.notes,
+      includedMeats, // 👈 cuántas carnes van en el precio base
     };
 
     const newItem = {
-      product: selectedProduct._id,
-      productName: selectedProduct.name,
+      product: selectedProduct.baseProductId || selectedProduct._id, // id REAL para Mongo
+      productName: selectedProduct.uiName || selectedProduct.name,
       productCode: selectedProduct.code || null,
       quantity,
       includesFries: config.includesFries,
@@ -228,6 +277,7 @@ function MeseroPage() {
       burgerConfig,
       unitPrice,
       totalPrice,
+      basePrice,
     };
 
     if (editingIndex !== null) {
@@ -252,6 +302,8 @@ function MeseroPage() {
     0
   );
 
+  const totalItems = items.reduce((sum, it) => sum + (it.quantity || 0), 0);
+
   // ✅ regla: debe haber items y (mesa válida o para llevar)
   const mesaValida = toGo || (!!tableNumber && Number(tableNumber) > 0);
   const canSend = items.length > 0 && mesaValida;
@@ -274,10 +326,18 @@ function MeseroPage() {
       setMessage("");
       setMesaWarning("");
 
+      const cleanItems = items.map((it) => ({
+        ...it,
+        quantity: Number(it.quantity) || 1,
+        extraFriesQty: Number(it.extraFriesQty) || 0,
+        unitPrice: Number(it.unitPrice) || 0,
+        totalPrice: Number(it.totalPrice) || 0,
+      }));
+
       const payload = {
         tableNumber: toGo ? null : Number(tableNumber) || null,
         toGo,
-        items,
+        items: cleanItems,
       };
 
       await createOrder(payload);
@@ -287,7 +347,7 @@ function MeseroPage() {
       setToGo(false);
       setMessage("✅ Pedido enviado a cocina");
     } catch (err) {
-      console.error(err);
+      console.error("❌ Error enviando pedido:", err);
       alert("Error enviando pedido a cocina");
     } finally {
       setSending(false);
@@ -296,11 +356,17 @@ function MeseroPage() {
 
   // 🧮 Resumen en vivo del ítem que se está configurando
   const previewUnitPrice =
-    selectedProduct != null ? calculateUnitPrice(selectedProduct, config) : 0;
+    selectedProduct != null
+      ? calculateUnitPrice(
+          typeof selectedProduct.basePriceOverride === "number"
+            ? selectedProduct.basePriceOverride
+            : selectedProduct.price || 0,
+          config,
+          selectedProduct.includedMeats || 1
+        )
+      : 0;
   const previewQuantity = Number(config.quantity) || 1;
   const previewTotal = previewUnitPrice * previewQuantity;
-
-  const totalItems = items.reduce((sum, it) => sum + (it.quantity || 0), 0);
 
   return (
     <div className="min-h-screen bg-emerald-950 flex flex-col">
@@ -363,41 +429,104 @@ function MeseroPage() {
               Aún no hay productos cargados.
             </p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {products.map((product) => {
-                const isSelected =
-                  selectedProduct && selectedProduct._id === product._id;
-                return (
-                  <button
-                    key={product._id}
-                    onClick={() => openConfigForNew(product)}
-                    className={`text-left rounded-2xl p-3 border transition shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-300 ${
-                      isSelected
-                        ? "bg-emerald-300 text-emerald-950 border-emerald-100 shadow-lg"
-                        : "bg-emerald-900/80 hover:bg-emerald-800 text-emerald-50 border-emerald-700/60"
-                    }`}
-                  >
-                    <div className="flex justify-between items-start gap-2">
-                      <div>
-                        <div className="font-semibold text-sm">
-                          {product.name}
+            <div className="space-y-4">
+              {/* BLOQUE: Sencillas */}
+              <div>
+                <h3 className="text-xs font-semibold text-emerald-300 mb-1 uppercase tracking-wide">
+                  Hamburguesas sencillas
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {singleProducts.map((product) => {
+                    const isSelected =
+                      selectedProduct &&
+                      selectedProduct.baseProductId === product.baseProductId &&
+                      selectedProduct.includedMeats === 1;
+                    return (
+                      <button
+                        key={product.uiId}
+                        onClick={() => openConfigForNew(product)}
+                        className={`text-left rounded-2xl p-3 border transition shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-300 ${
+                          isSelected
+                            ? "bg-emerald-300 text-emerald-950 border-emerald-100 shadow-lg"
+                            : "bg-emerald-900/80 hover:bg-emerald-800 text-emerald-50 border-emerald-700/60"
+                        }`}
+                      >
+                        <div className="flex justify-between items-start gap-2">
+                          <div>
+                            <div className="font-semibold text-sm">
+                              {product.uiName}
+                            </div>
+                            <div className="text-[11px] mt-0.5 uppercase text-emerald-200">
+                              Hamburguesa sencilla ·{" "}
+                              {product.options?.tocineta === "caramelizada"
+                                ? "TOCINETA CARAMELIZADA"
+                                : "TOCINETA ASADA"}
+                            </div>
+                          </div>
+                          <span className="text-[11px] px-2 py-[2px] rounded-full bg-emerald-950/80 border border-emerald-600">
+                            Base {formatCOP(product.basePriceOverride || 0)}
+                          </span>
                         </div>
-                        <div className="text-[11px] mt-0.5 uppercase text-emerald-200">
-                          {product.options?.tocineta === "caramelizada"
-                            ? "Tocineta caramelizada"
-                            : "Tocineta asada"}
+                        <div className="mt-2 text-[10px] opacity-80">
+                          Toca para armar combo o agregar extras
                         </div>
-                      </div>
-                      <span className="text-[11px] px-2 py-[2px] rounded-full bg-emerald-950/80 border border-emerald-600">
-                        Base {formatCOP(product.price || 0)}
-                      </span>
-                    </div>
-                    <div className="mt-2 text-[10px] opacity-80">
-                      Toca para armar combo o agregar extras
-                    </div>
-                  </button>
-                );
-              })}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* BLOQUE: Dobles */}
+              <div>
+                <h3 className="text-xs font-semibold text-emerald-300 mb-1 uppercase tracking-wide">
+                  Hamburguesas doble carne
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {doubleProducts.map((product) => {
+                    const isSelected =
+                      selectedProduct &&
+                      selectedProduct.baseProductId === product.baseProductId &&
+                      selectedProduct.includedMeats === 2;
+                    const basePrice = product.basePriceOverride || 0;
+                    return (
+                      <button
+                        key={product.uiId}
+                        onClick={() =>
+                          openConfigForNew(product, {
+                            basePriceOverride: basePrice,
+                            initialMeatQty: 2,
+                          })
+                        }
+                        className={`text-left rounded-2xl p-3 border transition shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-300 ${
+                          isSelected
+                            ? "bg-emerald-300 text-emerald-950 border-emerald-100 shadow-lg"
+                            : "bg-emerald-900/80 hover:bg-emerald-800 text-emerald-50 border-emerald-700/60"
+                        }`}
+                      >
+                        <div className="flex justify-between items-start gap-2">
+                          <div>
+                            <div className="font-semibold text-sm">
+                              {product.uiName}
+                            </div>
+                            <div className="text-[11px] mt-0.5 uppercase text-emerald-200">
+                              Doble carne ·{" "}
+                              {product.options?.tocineta === "caramelizada"
+                                ? "TOCINETA CARAMELIZADA"
+                                : "TOCINETA ASADA"}
+                            </div>
+                          </div>
+                          <span className="text-[11px] px-2 py-[2px] rounded-full bg-emerald-950/80 border border-emerald-600">
+                            Base {formatCOP(basePrice)}
+                          </span>
+                        </div>
+                        <div className="mt-2 text-[10px] opacity-80">
+                          Toca para armar combo o agregar extras
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           )}
         </section>
@@ -565,7 +694,8 @@ function MeseroPage() {
             <div className="flex justify-between items-center mb-3">
               <div>
                 <h3 className="text-sm font-semibold text-emerald-50">
-                  Paso 2 – Configurar {selectedProduct.name}
+                  Paso 2 – Configurar{" "}
+                  {selectedProduct.uiName || selectedProduct.name}
                 </h3>
                 <p className="text-[11px] text-emerald-200">
                   Ajusta carnes, verduras, papas, gaseosa y notas.
