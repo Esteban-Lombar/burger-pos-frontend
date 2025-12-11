@@ -261,23 +261,71 @@ export default function CocinaPage() {
                             {item.productName} x{item.quantity}
                           </div>
 
-                          <div className="text-[11px] text-slate-300 leading-4 mt-0.5">
-                            Carne: {item.burgerConfig?.meatQty || 1}x · Toc:{" "}
-                            {item.burgerConfig?.baconType || "asada"}
-                            {item.burgerConfig?.extraBacon &&
-                              " + adic. toc"}{" "}
-                            · Queso ext:{" "}
-                            {item.burgerConfig?.extraCheese ? "sí" : "no"} ·
-                            Verduras:{" "}
-                            {item.burgerConfig?.noVeggies ? "sin" : "con"} ·
-                            Lechuga: {item.burgerConfig?.lettuceOption} ·
-                            Tomate: {item.burgerConfig?.tomato ? "sí" : "no"} ·
-                            Cebolla: {item.burgerConfig?.onion ? "sí" : "no"} ·
-                            Combo:{" "}
-                            {item.includesFries ? "con papas" : "solo"} · Adic
-                            papas: {item.extraFriesQty} · Gaseosa:{" "}
-                            {drinkLabel(item.drinkCode)}
-                          </div>
+                          <div className="mt-1 text-[11px] text-slate-200 space-y-1 leading-4">
+  {/* Línea 1: carne + tocineta + queso */}
+  <div>
+    <span className="font-semibold text-slate-50">Carne:</span>{" "}
+    {item.burgerConfig?.meatQty || 1}x{" "}
+    <span className="mx-1">·</span>
+    <span className="font-semibold text-slate-50">Tocineta:</span>{" "}
+    {item.burgerConfig?.baconType || "asada"}
+    {item.burgerConfig?.extraBacon && " + adición"}
+    <span className="mx-1">·</span>
+    <span className="font-semibold text-slate-50">Queso extra:</span>{" "}
+    {item.burgerConfig?.extraCheese ? "sí" : "no"}
+  </div>
+
+  {/* Línea 2: verduras */}
+  <div>
+    <span className="font-semibold text-slate-50">Verduras:</span>{" "}
+    {item.burgerConfig?.noVeggies ? "sin" : "con"}
+    <span className="mx-1">·</span>
+    <span className="font-semibold text-slate-50">Lechuga:</span>{" "}
+    {item.burgerConfig?.lettuceOption === "wrap"
+      ? "wrap"
+      : item.burgerConfig?.lettuceOption === "sin"
+      ? "no"
+      : "sí"}
+    <span className="mx-1">·</span>
+    <span className="font-semibold text-slate-50">Tomate:</span>{" "}
+    {item.burgerConfig?.tomato ? "sí" : "no"}
+    <span className="mx-1">·</span>
+    <span className="font-semibold text-slate-50">Cebolla:</span>{" "}
+    {item.burgerConfig?.onion ? "sí" : "no"}
+  </div>
+
+  {/* Línea 3: papas / combo / gaseosa */}
+  <div>
+    <span className="font-semibold text-slate-50">Acompañamientos:</span>{" "}
+    {item.includesFries ? "con papas" : "solo hamburguesa"}
+    {typeof item.extraFriesQty === "number" &&
+      item.extraFriesQty > 0 && (
+        <>
+          {" "}
+          · Adic. papas: {item.extraFriesQty}
+        </>
+      )}
+    <span className="mx-1">·</span>
+    <span className="font-semibold text-slate-50">Bebida:</span>{" "}
+    {drinkLabel(item.drinkCode)}
+  </div>
+
+  {/* Etiqueta combo para que el cocinero lo vea rápido */}
+  {item.includesFries && item.drinkCode && item.drinkCode !== "none" && (
+    <div className="inline-flex items-center gap-1 px-2 py-[2px] rounded-full bg-emerald-900/70 border border-emerald-500 text-[10px] text-emerald-100">
+      <span>🥤🍟</span>
+      <span>COMBO (papas + gaseosa)</span>
+    </div>
+  )}
+
+  {/* Nota para cocina bien visible */}
+  {item.burgerConfig?.notes && item.burgerConfig.notes.trim() !== "" && (
+    <div className="text-yellow-300 font-semibold">
+      📝 Nota cocina: {item.burgerConfig.notes}
+    </div>
+  )}
+</div>
+
 
                           {item.burgerConfig?.notes?.trim() !== "" && (
                             <div className="text-[11px] text-yellow-300 font-semibold mt-1">

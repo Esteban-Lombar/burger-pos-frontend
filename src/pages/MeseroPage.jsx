@@ -11,12 +11,16 @@ function formatCOP(value) {
 }
 
 // 💰 precios de las adiciones
+// Base sencilla: 18.000
+// + solo papas -> 21.000 ( +3.000 )
+// + solo gaseosa -> 21.000 ( +3.000 )
+// + papas + gaseosa -> 23.000 ( +6.000 - 1.000 descuento combo )
 const ADDON_PRICES = {
   extraMeat: 5000, // carne adicional
   extraBacon: 3000, // adición de tocineta
-  fries: 5000, // papas incluidas (combo)
+  fries: 3000, // papas del combo
   extraFries: 5000, // porción adicional de papas
-  drink: 4000, // gaseosa personal
+  drink: 3000, // gaseosa personal
   extraCheese: 3000, // adición de queso
 };
 
@@ -66,7 +70,7 @@ function calculateUnitPrice(basePrice, cfg, includedMeats = 1) {
 
   // papas incluidas (la porción del combo)
   if (cfg.includesFries) {
-    unit += ADDON_PRICES.fries; // +5.000
+    unit += ADDON_PRICES.fries; // +3.000
   }
 
   // porciones adicionales de papas
@@ -78,7 +82,7 @@ function calculateUnitPrice(basePrice, cfg, includedMeats = 1) {
   // gaseosa
   const hasDrink = cfg.drinkCode && cfg.drinkCode !== "none";
   if (hasDrink) {
-    unit += ADDON_PRICES.drink; // +4.000
+    unit += ADDON_PRICES.drink; // +3.000
   }
 
   // 💥 descuento combo: papas + gaseosa -> -1.000
@@ -368,6 +372,18 @@ function MeseroPage() {
   const previewQuantity = Number(config.quantity) || 1;
   const previewTotal = previewUnitPrice * previewQuantity;
 
+  // estados para botones rápidos SOLO PAPAS / SOLO GASEOSA
+  const isSoloPapas =
+    config.includesFries &&
+    (Number(config.extraFriesQty) || 0) === 0 &&
+    (!config.drinkCode || config.drinkCode === "none");
+
+  const isSoloGaseosa =
+    !config.includesFries &&
+    (Number(config.extraFriesQty) || 0) === 0 &&
+    config.drinkCode &&
+    config.drinkCode !== "none";
+
   return (
     <div className="min-h-screen bg-emerald-950 flex flex-col">
       {/* Header */}
@@ -596,38 +612,72 @@ function MeseroPage() {
                               {item.productName} x{item.quantity}
                             </div>
                             {/* 🔍 Resumen super detallado para confirmar con el cliente */}
-                            <div className="text-[11px] text-emerald-300 leading-4 mt-0.5">
-                              Carne: {item.burgerConfig?.meatQty || 1}x · Toc:{" "}
-                              {item.burgerConfig?.baconType || "asada"}
-                              {item.burgerConfig?.extraBacon && " + adición"} ·{" "}
-                              Queso extra:{" "}
-                              {item.burgerConfig?.extraCheese ? "sí" : "no"} ·{" "}
-                              Verduras:{" "}
-                              {item.burgerConfig?.noVeggies ? "sin" : "con"} ·{" "}
-                              Lechuga:{" "}
-                              {item.burgerConfig?.lettuceOption === "wrap"
-                                ? "wrap"
-                                : item.burgerConfig?.lettuceOption === "sin"
-                                ? "no"
-                                : "sí"}{" "}
-                              · Tomate:{" "}
-                              {item.burgerConfig?.tomato ? "sí" : "no"} ·
-                              Cebolla:{" "}
-                              {item.burgerConfig?.onion ? "sí" : "no"} · Combo:{" "}
-                              {item.includesFries
-                                ? "con papas"
-                                : "solo hamburguesa"}{" "}
-                              · Adic. papas: {item.extraFriesQty || 0} ·
-                              Gaseosa: {drinkLabel(item.drinkCode)}
-                              {item.burgerConfig?.notes && (
-                                <>
-                                  <br />
-                                  <span className="text-amber-200">
-                                    📝 {item.burgerConfig.notes}
-                                  </span>
-                                </>
-                              )}
-                            </div>
+                            <div className="mt-1 text-[11px] text-emerald-200 space-y-1 leading-4">
+  {/* Línea 1: carne + tocineta + queso */}
+  <div>
+    <span className="font-semibold text-emerald-100">Carne:</span>{" "}
+    {item.burgerConfig?.meatQty || 1}x{" "}
+    <span className="mx-1">·</span>
+    <span className="font-semibold text-emerald-100">Tocineta:</span>{" "}
+    {item.burgerConfig?.baconType || "asada"}
+    {item.burgerConfig?.extraBacon && " + adición"}
+    <span className="mx-1">·</span>
+    <span className="font-semibold text-emerald-100">Queso extra:</span>{" "}
+    {item.burgerConfig?.extraCheese ? "sí" : "no"}
+  </div>
+
+  {/* Línea 2: verduras */}
+  <div>
+    <span className="font-semibold text-emerald-100">Verduras:</span>{" "}
+    {item.burgerConfig?.noVeggies ? "sin" : "con"}
+    <span className="mx-1">·</span>
+    <span className="font-semibold text-emerald-100">Lechuga:</span>{" "}
+    {item.burgerConfig?.lettuceOption === "wrap"
+      ? "wrap"
+      : item.burgerConfig?.lettuceOption === "sin"
+      ? "no"
+      : "sí"}
+    <span className="mx-1">·</span>
+    <span className="font-semibold text-emerald-100">Tomate:</span>{" "}
+    {item.burgerConfig?.tomato ? "sí" : "no"}
+    <span className="mx-1">·</span>
+    <span className="font-semibold text-emerald-100">Cebolla:</span>{" "}
+    {item.burgerConfig?.onion ? "sí" : "no"}
+  </div>
+
+  {/* Línea 3: papas / combo / gaseosa */}
+  <div>
+    <span className="font-semibold text-emerald-100">Acompañamientos:</span>{" "}
+    {item.includesFries ? "con papas" : "solo hamburguesa"}
+    {typeof item.extraFriesQty === "number" &&
+      item.extraFriesQty > 0 && (
+        <>
+          {" "}
+          · Adic. papas: {item.extraFriesQty}
+        </>
+      )}
+    <span className="mx-1">·</span>
+    <span className="font-semibold text-emerald-100">Bebida:</span>{" "}
+    {drinkLabel(item.drinkCode)}
+  </div>
+
+  {/* Línea 4: etiqueta de combo si aplica */}
+  {item.includesFries && item.drinkCode && item.drinkCode !== "none" && (
+    <div className="inline-flex items-center gap-1 px-2 py-[2px] rounded-full bg-emerald-800/80 border border-emerald-500 text-[10px] text-emerald-100">
+      <span>🥤🍟</span>
+      <span>En combo (papas + gaseosa)</span>
+    </div>
+  )}
+
+  {/* Línea 5: nota para cocina */}
+  {item.burgerConfig?.notes && item.burgerConfig.notes.trim() !== "" && (
+    <div className="text-amber-200">
+      📝 <span className="font-semibold">Nota:</span>{" "}
+      {item.burgerConfig.notes}
+    </div>
+  )}
+</div>
+
                           </div>
                           <div className="text-xs font-bold text-amber-200 whitespace-nowrap">
                             {formatCOP(item.totalPrice || 0)}
@@ -872,6 +922,49 @@ function MeseroPage() {
                 <span className="block mb-1 font-semibold text-[11px]">
                   Papas y gaseosa
                 </span>
+
+                {/* Botones rápidos SOLO PAPAS / SOLO GASEOSA */}
+                <div className="flex flex-wrap gap-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConfig((prev) => ({
+                        ...prev,
+                        includesFries: true,
+                        extraFriesQty: 0,
+                        drinkCode: "none",
+                      }))
+                    }
+                    className={`px-2 py-1 rounded-full border text-[11px] ${
+                      isSoloPapas
+                        ? "bg-emerald-300 text-emerald-950 border-emerald-400"
+                        : "bg-emerald-900 text-emerald-100 border-emerald-700"
+                    }`}
+                  >
+                    Solo papas
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConfig((prev) => ({
+                        ...prev,
+                        includesFries: false,
+                        extraFriesQty: 0,
+                        drinkCode:
+                          prev.drinkCode === "none" ? "coca" : prev.drinkCode,
+                      }))
+                    }
+                    className={`px-2 py-1 rounded-full border text-[11px] ${
+                      isSoloGaseosa
+                        ? "bg-emerald-300 text-emerald-950 border-emerald-400"
+                        : "bg-emerald-900 text-emerald-100 border-emerald-700"
+                    }`}
+                  >
+                    Solo gaseosa
+                  </button>
+                </div>
+
                 <label className="flex items-center gap-1 mb-1">
                   <input
                     type="checkbox"
@@ -908,9 +1001,9 @@ function MeseroPage() {
                     className="w-full px-2 py-1 rounded bg-emerald-900 border border-emerald-700 outline-none"
                   >
                     <option value="none">Sin bebida</option>
-                    <option value="coca">Coca-Cola personal (+$4.000)</option>
+                    <option value="coca">Coca-Cola personal (+$3.000)</option>
                     <option value="coca_zero">
-                      Coca-Cola Zero personal (+$4.000)
+                      Coca-Cola Zero personal (+$3.000)
                     </option>
                   </select>
                 </div>
