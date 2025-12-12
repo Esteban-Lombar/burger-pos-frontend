@@ -165,9 +165,15 @@ export default function CocinaPage() {
 
   // Cambiar estado
   const changeStatus = async (order, status) => {
+  try {
     await updateOrderStatus(order._id, status);
-    loadOrders();
-  };
+    await loadOrders();
+  } catch (e) {
+    console.error(e);
+    alert("No se pudo actualizar el estado. Revisa conexión/servidor.");
+  }
+};
+
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col">
