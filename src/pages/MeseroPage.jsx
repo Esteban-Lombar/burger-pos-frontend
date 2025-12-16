@@ -1,155 +1,221 @@
 // src/pages/MeseroPage.jsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fetchProducts, createOrder } from "../api/client";
 
 function formatCOP(value) {
-  return value.toLocaleString("es-CO", {
+  return (Number(value) || 0).toLocaleString("es-CO", {
     style: "currency",
     currency: "COP",
     maximumFractionDigits: 0,
   });
 }
 
-// 💰 precios de las adiciones
+// 💰 precios de adiciones / combos
 // Base sencilla: 18.000
-// + solo papas -> 21.000 ( +3.000 )
-// + solo gaseosa -> 21.000 ( +3.000 )
-// + papas + gaseosa -> 23.000 ( +6.000 - 1.000 descuento combo )
+// + solo papas -> +3.000
+// + solo gaseosa -> +3.000
+// + papas + gaseosa -> +6.000 - 1.000 descuento combo
 const ADDON_PRICES = {
   extraMeat: 5000, // carne adicional
   extraBacon: 3000, // adición de tocineta
-  fries: 3000, // papas del combo
-  extraFries: 5000, // porción adicional de papas
-  drink: 3000, // gaseosa personal
   extraCheese: 3000, // adición de queso
+
+  fries: 3000, // papas incluidas en combo
+  drink: 3000, // gaseosa incluida en combo
+  comboDiscount: 1000, // descuento cuando hay papas + gaseosa
+
+  extraFries: 5000, // adición de papas (cantidad)
+  extraDrink: 4000, // ✅ adición de gaseosa (cantidad)
 };
 
-const COMBO_DISCOUNT = 1000; // descuento cuando lleva papas + gaseosa
-
 const baseConfig = {
+  quantity: 1,
+
   meatQty: 1,
+  baconType: "asada",
   extraBacon: false,
   extraCheese: false,
-  lettuceOption: "normal", // normal | sin | wrap
+
+  lettuceOption: "normal", // normal | wrap | sin
   tomato: true,
   onion: true,
   noVeggies: false,
+
   includesFries: false,
   extraFriesQty: 0,
+
   drinkCode: "none", // none | coca | coca_zero
+  extraDrinkQty: 0, // ✅ adición gaseosa (cantidad)
+
   notes: "",
-  quantity: 1,
-  baconType: "asada",
 };
 
-// label para gaseosa
 function drinkLabel(code) {
+  if (!code || code === "none") return "sin bebida";
   if (code === "coca") return "Coca-Cola";
   if (code === "coca_zero") return "Coca-Cola Zero";
-  return "sin bebida";
+  return code;
 }
 
-// 🔢 calcula el precio POR HAMBURGUESA con todos los extras
-// ahora recibe cuántas carnes ya van incluidas en el precio base
-function calculateUnitPrice(basePrice, cfg, includedMeats = 1) {
-  let unit = basePrice || 0;
+/**
+ * Calcula precio unitario final de un item según config y producto.
+ */
+function calculateUnitPrice(basePrice, config, includedMeats, selectedProduct) {
+  let price = Number(basePrice) || 0;
 
-  // carnes extra: solo se cobra por encima de las incluidas
-  const meatQty = Number(cfg.meatQty) || 1;
-  if (meatQty > includedMeats) {
-    unit += (meatQty - includedMeats) * ADDON_PRICES.extraMeat;
+  // ✅ Caso especial: Papas chessbeicon (producto aparte)
+  if (selectedProduct?.isPapasChess) {
+    if (config.extraCheese) price += ADDON_PRICES.extraCheese;
+    if (config.extraBacon) price += ADDON_PRICES.extraBacon;
+
+    // gaseosa del producto (base 10k / con gaseosa 14k)
+    if (config.drinkCode && config.drinkCode !== "none") {
+      price += 4000;
+    }
+
+    return price;
   }
 
-  if (cfg.extraBacon) {
-    unit += ADDON_PRICES.extraBacon;
+  // ✅ Caso especial: Papas (solo) (producto aparte)
+  if (selectedProduct?.code === "papas") {
+    return price; // basePriceOverride ya es 5000
   }
 
-  if (cfg.extraCheese) {
-    unit += ADDON_PRICES.extraCheese;
-  }
+  // 🥩 Carnes: si el cliente sube meatQty por encima de las carnes incluidas, cobra extra
+  const meatQty = Number(config.meatQty) || 1;
+  const included = Number(includedMeats) || 1;
+  const extraMeats = Math.max(0, meatQty - included);
+  if (extraMeats > 0) price += extraMeats * ADDON_PRICES.extraMeat;
 
-  // papas incluidas (la porción del combo)
-  if (cfg.includesFries) {
-    unit += ADDON_PRICES.fries; // +3.000
-  }
+  // 🧀🥓 extras
+  if (config.extraBacon) price += ADDON_PRICES.extraBacon;
+  if (config.extraCheese) price += ADDON_PRICES.extraCheese;
 
-  // porciones adicionales de papas
-  const extraFriesQty = Number(cfg.extraFriesQty) || 0;
-  if (extraFriesQty > 0) {
-    unit += extraFriesQty * ADDON_PRICES.extraFries; // +5.000 c/u
-  }
+  // 🍟 papas incluidas (combo)
+  if (config.includesFries) price += ADDON_PRICES.fries;
 
-  // gaseosa
-  const hasDrink = cfg.drinkCode && cfg.drinkCode !== "none";
-  if (hasDrink) {
-    unit += ADDON_PRICES.drink; // +3.000
-  }
+  // 🥤 gaseosa incluida (combo)
+  const hasDrink = config.drinkCode && config.drinkCode !== "none";
+  if (hasDrink) price += ADDON_PRICES.drink;
 
-  // 💥 descuento combo: papas + gaseosa -> -1.000
-  if (cfg.includesFries && hasDrink) {
-    unit -= COMBO_DISCOUNT;
-  }
+  // 🔻 descuento combo si hay papas + gaseosa
+  if (config.includesFries && hasDrink) price -= ADDON_PRICES.comboDiscount;
 
-  return unit;
+  // ➕ adiciones por cantidad
+  const extraFriesQty = Number(config.extraFriesQty) || 0;
+  if (extraFriesQty > 0) price += extraFriesQty * ADDON_PRICES.extraFries;
+
+  const extraDrinkQty = Number(config.extraDrinkQty) || 0;
+  if (extraDrinkQty > 0) price += extraDrinkQty * ADDON_PRICES.extraDrink;
+
+  return price;
 }
 
-function MeseroPage() {
+export default function MeseroPage() {
   const [products, setProducts] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [error, setError] = useState("");
 
-  const [tableNumber, setTableNumber] = useState("");
-  const [toGo, setToGo] = useState(false);
-  const [items, setItems] = useState([]);
-
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [config, setConfig] = useState(baseConfig);
-  const [editingIndex, setEditingIndex] = useState(null); // 👈 para saber si estoy editando
+  const [editingIndex, setEditingIndex] = useState(null);
+
+  const [items, setItems] = useState([]);
+  const [tableNumber, setTableNumber] = useState("");
+  const [toGo, setToGo] = useState(false);
 
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState("");
-  const [mesaWarning, setMesaWarning] = useState(""); // 🚨 aviso cuando falta mesa / para llevar
+  const [mesaWarning, setMesaWarning] = useState("");
 
-  // Cargar menú
   useEffect(() => {
-    async function loadProducts() {
+    const load = async () => {
       try {
         setLoadingProducts(true);
         setError("");
         const data = await fetchProducts();
-        setProducts(data);
-      } catch (err) {
-        console.error(err);
-        setError("Error cargando el menú");
+        setProducts(Array.isArray(data) ? data : []);
+      } catch (e) {
+        console.error(e);
+        setError("Error cargando productos");
       } finally {
         setLoadingProducts(false);
       }
-    }
-    loadProducts();
+    };
+    load();
   }, []);
 
-  // ------------------------------
-  // helpers para cards sencillas/dobles
-  // ------------------------------
   // Sencillas: 1 carne incluida
-  const singleProducts = products.map((p) => ({
-    ...p,
-    uiId: p._id + "-single",
-    uiName: p.name,
-    basePriceOverride: p.price,
-    includedMeats: 1,
-    baseProductId: p._id,
-  }));
+const singleProducts = useMemo(
+  () =>
+    products
+      .filter((p) => p.type === "burger") // ✅ solo hamburguesas
+      .map((p) => ({
+        ...p,
+        uiId: p._id + "-single",
+        uiName: p.name,
+        basePriceOverride: p.price,
+        includedMeats: 1,
+        baseProductId: p._id,
+      })),
+  [products]
+);
 
-  // Dobles: 2 carnes incluidas, base = precio sencilla + 5.000
-  const doubleProducts = products.map((p) => ({
-    ...p,
-    uiId: p._id + "-double",
-    uiName: `${p.name} (doble carne)`,
-    basePriceOverride: (p.price || 0) + ADDON_PRICES.extraMeat, // 18k + 5k = 23k
-    includedMeats: 2,
-    baseProductId: p._id,
-  }));
+
+ // Dobles: 2 carnes incluidas, base = precio sencilla + 5.000
+const doubleProducts = useMemo(
+  () =>
+    products
+      .filter((p) => p.type === "burger") // ✅ solo hamburguesas
+      .map((p) => ({
+        ...p,
+        uiId: p._id + "-double",
+        uiName: `${p.name} (doble carne)`,
+        basePriceOverride: (p.price || 0) + ADDON_PRICES.extraMeat,
+        includedMeats: 2,
+        baseProductId: p._id,
+      })),
+  [products]
+);
+
+
+  // ✅ NUEVOS: Papas y Papas chessbeicon (deben existir en BD por code)
+  const papasProduct = useMemo(
+    () => products.find((p) => p.code === "papas"),
+    [products]
+  );
+  const papasChessProduct = useMemo(
+    () => products.find((p) => p.code === "papas_chessbeicon"),
+    [products]
+  );
+
+  const sides = useMemo(
+    () =>
+      [
+        papasProduct
+          ? {
+              ...papasProduct,
+              uiId: papasProduct._id + "-side",
+              uiName: "Papas (solo)",
+              basePriceOverride: 5000,
+              includedMeats: 0,
+              baseProductId: papasProduct._id,
+            }
+          : null,
+        papasChessProduct
+          ? {
+              ...papasChessProduct,
+              uiId: papasChessProduct._id + "-side",
+              uiName: "Papas chessbeicon",
+              basePriceOverride: 10000,
+              includedMeats: 0,
+              baseProductId: papasChessProduct._id,
+              isPapasChess: true,
+            }
+          : null,
+      ].filter(Boolean),
+    [papasProduct, papasChessProduct]
+  );
 
   // Abrir configurador para NUEVO item
   const openConfigForNew = (product, options = {}) => {
@@ -174,6 +240,7 @@ function MeseroPage() {
       baconType,
       meatQty: initialMeatQty,
     });
+
     setEditingIndex(null);
   };
 
@@ -191,6 +258,7 @@ function MeseroPage() {
       baseProductId: product._id,
       includedMeats: item.burgerConfig?.includedMeats || 1,
       uiName: item.productName,
+      isPapasChess: item.productCode === "papas_chessbeicon",
     });
 
     setConfig({
@@ -208,9 +276,13 @@ function MeseroPage() {
           ? item.burgerConfig.onion
           : true,
       noVeggies: item.burgerConfig?.noVeggies || false,
+
       includesFries: item.includesFries || false,
       extraFriesQty: item.extraFriesQty || 0,
+
       drinkCode: item.drinkCode || "none",
+      extraDrinkQty: item.extraDrinkQty || 0, // ✅ cargar adición de gaseosa
+
       notes: item.burgerConfig?.notes || "",
       baconType:
         item.burgerConfig?.baconType ||
@@ -218,6 +290,7 @@ function MeseroPage() {
           ? "caramelizada"
           : "asada"),
     });
+
     setEditingIndex(index);
   };
 
@@ -242,55 +315,67 @@ function MeseroPage() {
   };
 
   // Guardar (nuevo o editar)
-  const handleSaveItem = () => {
-    if (!selectedProduct) return;
+const handleSaveItem = () => {
+  if (!selectedProduct) return;
+  const quantity = Number(config.quantity) || 1;
 
-    const quantity = Number(config.quantity) || 1;
-    const basePrice =
-      typeof selectedProduct.basePriceOverride === "number"
-        ? selectedProduct.basePriceOverride
-        : selectedProduct.price || 0;
+  const basePrice =
+    typeof selectedProduct.basePriceOverride === "number"
+      ? selectedProduct.basePriceOverride
+      : selectedProduct.price || 0;
 
-    const includedMeats = selectedProduct.includedMeats || 1;
+  const includedMeats = selectedProduct.includedMeats || 1;
 
-    const unitPrice = calculateUnitPrice(basePrice, config, includedMeats);
-    const totalPrice = unitPrice * quantity;
+  const unitPrice = calculateUnitPrice(
+    basePrice,
+    config,
+    includedMeats,
+    selectedProduct
+  );
+  const totalPrice = unitPrice * quantity;
 
-    const burgerConfig = {
-      meatType: "carne",
-      meatQty: Number(config.meatQty) || 1,
-      baconType: config.baconType,
-      extraBacon: config.extraBacon,
-      extraCheese: config.extraCheese,
-      lettuceOption: config.lettuceOption,
-      tomato: config.tomato,
-      onion: config.onion,
-      noVeggies: config.noVeggies,
-      notes: config.notes,
-      includedMeats, // 👈 cuántas carnes van en el precio base
-    };
+  // ✅ C2: detectar si es acompañamiento (papas)
+  const isSide =
+    selectedProduct?.isPapasChess || selectedProduct?.code === "papas";
+
+  const burgerConfig = {
+    meatType: "carne",
+    // ✅ si es papas, la carne queda en 0 (no 1)
+    meatQty: isSide ? 0 : (Number(config.meatQty) || 1),
+    baconType: config.baconType,
+    extraBacon: config.extraBacon,
+    extraCheese: config.extraCheese,
+    lettuceOption: config.lettuceOption,
+    tomato: config.tomato,
+    onion: config.onion,
+    noVeggies: config.noVeggies,
+    notes: config.notes,
+    includedMeats,
+  };
+
 
     const newItem = {
-      product: selectedProduct.baseProductId || selectedProduct._id, // id REAL para Mongo
+      product: selectedProduct.baseProductId || selectedProduct._id, // id real para Mongo
       productName: selectedProduct.uiName || selectedProduct.name,
       productCode: selectedProduct.code || null,
       quantity,
+
       includesFries: config.includesFries,
       extraFriesQty: Number(config.extraFriesQty) || 0,
+
       drinkCode: config.drinkCode,
+      extraDrinkQty: Number(config.extraDrinkQty) || 0, // ✅ adición gaseosa
+
       burgerConfig,
+
       unitPrice,
       totalPrice,
       basePrice,
     };
 
     if (editingIndex !== null) {
-      // editar
-      setItems((prev) =>
-        prev.map((it, idx) => (idx === editingIndex ? newItem : it))
-      );
+      setItems((prev) => prev.map((it, idx) => (idx === editingIndex ? newItem : it)));
     } else {
-      // nuevo
       setItems((prev) => [...prev, newItem]);
     }
 
@@ -301,14 +386,9 @@ function MeseroPage() {
     setItems((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const orderTotal = items.reduce(
-    (sum, item) => sum + (item.totalPrice || 0),
-    0
-  );
-
+  const orderTotal = items.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
   const totalItems = items.reduce((sum, it) => sum + (it.quantity || 0), 0);
 
-  // ✅ regla: debe haber items y (mesa válida o para llevar)
   const mesaValida = toGo || (!!tableNumber && Number(tableNumber) > 0);
   const canSend = items.length > 0 && mesaValida;
 
@@ -320,9 +400,7 @@ function MeseroPage() {
       }
 
       if (!mesaValida) {
-        setMesaWarning(
-          "Selecciona un número de mesa o marca la opción PARA LLEVAR."
-        );
+        setMesaWarning("Selecciona un número de mesa o marca la opción PARA LLEVAR.");
         return;
       }
 
@@ -334,6 +412,7 @@ function MeseroPage() {
         ...it,
         quantity: Number(it.quantity) || 1,
         extraFriesQty: Number(it.extraFriesQty) || 0,
+        extraDrinkQty: Number(it.extraDrinkQty) || 0,
         unitPrice: Number(it.unitPrice) || 0,
         totalPrice: Number(it.totalPrice) || 0,
       }));
@@ -366,9 +445,11 @@ function MeseroPage() {
             ? selectedProduct.basePriceOverride
             : selectedProduct.price || 0,
           config,
-          selectedProduct.includedMeats || 1
+          selectedProduct.includedMeats || 1,
+          selectedProduct
         )
       : 0;
+
   const previewQuantity = Number(config.quantity) || 1;
   const previewTotal = previewUnitPrice * previewQuantity;
 
@@ -389,23 +470,16 @@ function MeseroPage() {
       {/* Header */}
       <header className="p-4 border-b border-emerald-800 bg-emerald-950/95 backdrop-blur flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-xl font-bold text-emerald-50">
-            Mesero – Tomar pedido 🍔
-          </h1>
+          <h1 className="text-xl font-bold text-emerald-50">Mesero – Tomar pedido 🍔</h1>
           <p className="text-[11px] text-emerald-200">
-            Paso 1: elige hamburguesa · Paso 2: configura · Paso 3: confirma y
-            envía
+            Paso 1: elige hamburguesa · Paso 2: configura · Paso 3: confirma y envía
           </p>
         </div>
 
         {/* Resumen rápido del pedido */}
         <div className="flex flex-wrap gap-2 text-[11px]">
           <div className="px-3 py-1 rounded-full bg-emerald-900 border border-emerald-600 text-emerald-100">
-            {toGo
-              ? "🛍 Para llevar"
-              : tableNumber
-              ? `🍽 Mesa ${tableNumber}`
-              : "🍽 Mesa sin asignar"}
+            {toGo ? "🛍 Para llevar" : tableNumber ? `🍽 Mesa ${tableNumber}` : "🍽 Mesa sin asignar"}
           </div>
           <div className="px-3 py-1 rounded-full bg-emerald-900 border border-emerald-600 text-emerald-100">
             🧾 Ítems:{" "}
@@ -415,9 +489,7 @@ function MeseroPage() {
           </div>
           <div className="px-3 py-1 rounded-full bg-emerald-900 border border-emerald-600 text-emerald-100">
             💵 Total:{" "}
-            <span className="font-semibold text-amber-300">
-              {formatCOP(orderTotal)}
-            </span>
+            <span className="font-semibold text-amber-300">{formatCOP(orderTotal)}</span>
           </div>
         </div>
       </header>
@@ -427,12 +499,8 @@ function MeseroPage() {
         <section className="flex-1 p-4 border-r border-emerald-900/70">
           <div className="flex items-center justify-between mb-2">
             <div>
-              <h2 className="text-sm font-semibold text-emerald-50">
-                Paso 1 – Menú de hamburguesas
-              </h2>
-              <p className="text-[11px] text-emerald-200">
-                Toca una hamburguesa para configurarla.
-              </p>
+              <h2 className="text-sm font-semibold text-emerald-50">Paso 1 – Menú de hamburguesas</h2>
+              <p className="text-[11px] text-emerald-200">Toca una hamburguesa para configurarla.</p>
             </div>
           </div>
 
@@ -441,9 +509,7 @@ function MeseroPage() {
           ) : error ? (
             <p className="text-red-100 text-sm">{error}</p>
           ) : products.length === 0 ? (
-            <p className="text-emerald-100 text-sm">
-              Aún no hay productos cargados.
-            </p>
+            <p className="text-emerald-100 text-sm">Aún no hay productos cargados.</p>
           ) : (
             <div className="space-y-4">
               {/* BLOQUE: Sencillas */}
@@ -457,6 +523,7 @@ function MeseroPage() {
                       selectedProduct &&
                       selectedProduct.baseProductId === product.baseProductId &&
                       selectedProduct.includedMeats === 1;
+
                     return (
                       <button
                         key={product.uiId}
@@ -469,9 +536,7 @@ function MeseroPage() {
                       >
                         <div className="flex justify-between items-start gap-2">
                           <div>
-                            <div className="font-semibold text-sm">
-                              {product.uiName}
-                            </div>
+                            <div className="font-semibold text-sm">{product.uiName}</div>
                             <div className="text-[11px] mt-0.5 uppercase text-emerald-200">
                               Hamburguesa sencilla ·{" "}
                               {product.options?.tocineta === "caramelizada"
@@ -483,9 +548,7 @@ function MeseroPage() {
                             Base {formatCOP(product.basePriceOverride || 0)}
                           </span>
                         </div>
-                        <div className="mt-2 text-[10px] opacity-80">
-                          Toca para armar combo o agregar extras
-                        </div>
+                        <div className="mt-2 text-[10px] opacity-80">Toca para armar combo o agregar extras</div>
                       </button>
                     );
                   })}
@@ -503,7 +566,9 @@ function MeseroPage() {
                       selectedProduct &&
                       selectedProduct.baseProductId === product.baseProductId &&
                       selectedProduct.includedMeats === 2;
+
                     const basePrice = product.basePriceOverride || 0;
+
                     return (
                       <button
                         key={product.uiId}
@@ -521,9 +586,7 @@ function MeseroPage() {
                       >
                         <div className="flex justify-between items-start gap-2">
                           <div>
-                            <div className="font-semibold text-sm">
-                              {product.uiName}
-                            </div>
+                            <div className="font-semibold text-sm">{product.uiName}</div>
                             <div className="text-[11px] mt-0.5 uppercase text-emerald-200">
                               Doble carne ·{" "}
                               {product.options?.tocineta === "caramelizada"
@@ -535,26 +598,92 @@ function MeseroPage() {
                             Base {formatCOP(basePrice)}
                           </span>
                         </div>
-                        <div className="mt-2 text-[10px] opacity-80">
-                          Toca para armar combo o agregar extras
-                        </div>
+                        <div className="mt-2 text-[10px] opacity-80">Toca para armar combo o agregar extras</div>
                       </button>
                     );
                   })}
                 </div>
               </div>
+
+              {/* BLOQUE: Acompañamientos */}
+              {sides.length > 0 && (
+                <div className="mt-4">
+                  <h3 className="text-xs font-semibold text-emerald-300 mb-1 uppercase tracking-wide">
+                    Acompañamientos
+                  </h3>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {sides.map((product) => {
+                      const basePrice = product.basePriceOverride || 0;
+
+                      return (
+                        <button
+                          key={product.uiId}
+                          onClick={() => {
+                            // 🟨 Papas solo
+                            if (product.uiName === "Papas (solo)") {
+                              openConfigForNew(product, {
+                                basePriceOverride: 5000,
+                                initialMeatQty: 0,
+                              });
+
+                              setConfig((prev) => ({
+                                ...prev,
+                                includesFries: false,
+                                extraFriesQty: 0,
+                                drinkCode: "none",
+                                extraDrinkQty: 0,
+                              }));
+                              return;
+                            }
+
+                            // 🟨 Papas chessbeicon
+                            openConfigForNew(product, {
+                              basePriceOverride: 10000,
+                              initialMeatQty: 0,
+                            });
+
+                            setConfig((prev) => ({
+                              ...prev,
+                              includesFries: false,
+                              extraFriesQty: 0,
+                              drinkCode: "none",
+                              extraDrinkQty: 0,
+                            }));
+                          }}
+                          className="text-left rounded-2xl p-3 border transition shadow-sm
+                                     focus:outline-none focus:ring-2 focus:ring-amber-300
+                                     bg-emerald-900/80 hover:bg-emerald-800
+                                     text-emerald-50 border-emerald-700/60"
+                        >
+                          <div className="flex justify-between items-start gap-2">
+                            <div>
+                              <div className="font-semibold text-sm">{product.uiName}</div>
+                              <div className="text-[11px] mt-0.5 uppercase text-emerald-200">
+                                Acompañamiento
+                              </div>
+                            </div>
+
+                            <span className="text-[11px] px-2 py-[2px] rounded-full bg-emerald-950/80 border border-emerald-600">
+                              Base {formatCOP(basePrice)}
+                            </span>
+                          </div>
+
+                          <div className="mt-2 text-[10px] opacity-80">Toca para configurar</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </section>
 
         {/* Pedido actual (barra lateral) */}
         <section className="w-full md:w-80 lg:w-96 p-4 bg-emerald-950 border-l border-emerald-900/80">
-          <h2 className="text-sm font-semibold text-emerald-50 mb-1">
-            Paso 3 – Pedido actual
-          </h2>
-          <p className="text-[11px] text-emerald-200 mb-2">
-            Revisa con el cliente y envía a cocina.
-          </p>
+          <h2 className="text-sm font-semibold text-emerald-50 mb-1">Paso 3 – Pedido actual</h2>
+          <p className="text-[11px] text-emerald-200 mb-2">Revisa con el cliente y envía a cocina.</p>
 
           <div className="space-y-3 text-sm text-emerald-50">
             {/* Mesa / para llevar */}
@@ -573,11 +702,7 @@ function MeseroPage() {
                   className="flex-1 px-2 py-1 rounded bg-emerald-950 border border-emerald-700 text-xs text-emerald-50 outline-none"
                 />
                 <label className="flex items-center gap-1 text-[11px] text-emerald-200">
-                  <input
-                    type="checkbox"
-                    checked={toGo}
-                    onChange={(e) => setToGo(e.target.checked)}
-                  />
+                  <input checked={toGo} onChange={(e) => setToGo(e.target.checked)} type="checkbox" />
                   Para llevar
                 </label>
               </div>
@@ -586,19 +711,13 @@ function MeseroPage() {
             {/* Items */}
             <div className="bg-emerald-900/90 border border-emerald-700 rounded-2xl px-3 py-3">
               <div className="flex justify-between items-center mb-1">
-                <p className="text-xs font-semibold text-emerald-100">
-                  Ítems del pedido ({items.length})
-                </p>
-                <span className="text-[11px] text-emerald-300">
-                  {totalItems} hamburguesa(s)
-                </span>
+                <p className="text-xs font-semibold text-emerald-100">Ítems del pedido ({items.length})</p>
+                <span className="text-[11px] text-emerald-300">{totalItems} hamburguesa(s)</span>
               </div>
 
               <div className="mt-1 border-t border-emerald-800/80 pt-2">
                 {items.length === 0 ? (
-                  <p className="text-xs text-emerald-200">
-                    Aún no has agregado productos.
-                  </p>
+                  <p className="text-xs text-emerald-200">Aún no has agregado productos.</p>
                 ) : (
                   <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                     {items.map((item, index) => (
@@ -611,89 +730,81 @@ function MeseroPage() {
                             <div className="font-semibold text-xs">
                               {item.productName} x{item.quantity}
                             </div>
-                            {/* 🔍 Resumen super detallado para confirmar con el cliente */}
+
+                            {/* Resumen detallado */}
                             <div className="mt-1 text-[11px] text-emerald-200 space-y-1 leading-4">
-  {/* Línea 1: carne + tocineta + queso */}
-  <div>
-    <span className="font-semibold text-emerald-100">Carne:</span>{" "}
-    {item.burgerConfig?.meatQty || 1}x{" "}
-    <span className="mx-1">·</span>
-    <span className="font-semibold text-emerald-100">Tocineta:</span>{" "}
-    {item.burgerConfig?.baconType || "asada"}
-    {item.burgerConfig?.extraBacon && " + adición"}
-    <span className="mx-1">·</span>
-    <span className="font-semibold text-emerald-100">Queso extra:</span>{" "}
-    {item.burgerConfig?.extraCheese ? "sí" : "no"}
-  </div>
+                              <div>
+                                <span className="font-semibold text-emerald-100">Carne:</span>{" "}
+                                {item.burgerConfig?.meatQty || 1}x{" "}
+                                <span className="mx-1">·</span>
+                                <span className="font-semibold text-emerald-100">Tocineta:</span>{" "}
+                                {item.burgerConfig?.baconType || "asada"}
+                                {item.burgerConfig?.extraBacon && " + adición"}
+                                <span className="mx-1">·</span>
+                                <span className="font-semibold text-emerald-100">Queso extra:</span>{" "}
+                                {item.burgerConfig?.extraCheese ? "sí" : "no"}
+                              </div>
 
-  {/* Línea 2: verduras */}
-  <div>
-    <span className="font-semibold text-emerald-100">Verduras:</span>{" "}
-    {item.burgerConfig?.noVeggies ? "sin" : "con"}
-    <span className="mx-1">·</span>
-    <span className="font-semibold text-emerald-100">Lechuga:</span>{" "}
-    {item.burgerConfig?.lettuceOption === "wrap"
-      ? "wrap"
-      : item.burgerConfig?.lettuceOption === "sin"
-      ? "no"
-      : "sí"}
-    <span className="mx-1">·</span>
-    <span className="font-semibold text-emerald-100">Tomate:</span>{" "}
-    {item.burgerConfig?.tomato ? "sí" : "no"}
-    <span className="mx-1">·</span>
-    <span className="font-semibold text-emerald-100">Cebolla:</span>{" "}
-    {item.burgerConfig?.onion ? "sí" : "no"}
-  </div>
+                              <div>
+                                <span className="font-semibold text-emerald-100">Verduras:</span>{" "}
+                                {item.burgerConfig?.noVeggies ? "sin" : "con"}
+                                <span className="mx-1">·</span>
+                                <span className="font-semibold text-emerald-100">Lechuga:</span>{" "}
+                                {item.burgerConfig?.lettuceOption === "wrap"
+                                  ? "wrap"
+                                  : item.burgerConfig?.lettuceOption === "sin"
+                                  ? "no"
+                                  : "sí"}
+                                <span className="mx-1">·</span>
+                                <span className="font-semibold text-emerald-100">Tomate:</span>{" "}
+                                {item.burgerConfig?.tomato ? "sí" : "no"}
+                                <span className="mx-1">·</span>
+                                <span className="font-semibold text-emerald-100">Cebolla:</span>{" "}
+                                {item.burgerConfig?.onion ? "sí" : "no"}
+                              </div>
 
-  {/* Línea 3: papas / combo / gaseosa */}
-  <div>
-    <span className="font-semibold text-emerald-100">Acompañamientos:</span>{" "}
-    {item.includesFries ? "con papas" : "solo hamburguesa"}
-    {typeof item.extraFriesQty === "number" &&
-      item.extraFriesQty > 0 && (
-        <>
-          {" "}
-          · Adic. papas: {item.extraFriesQty}
-        </>
-      )}
-    <span className="mx-1">·</span>
-    <span className="font-semibold text-emerald-100">Bebida:</span>{" "}
-    {drinkLabel(item.drinkCode)}
-  </div>
+                              <div>
+                                <span className="font-semibold text-emerald-100">Acompañamientos:</span>{" "}
+                                {item.includesFries ? "con papas" : "solo hamburguesa"}
 
-  {/* Línea 4: etiqueta de combo si aplica */}
-  {item.includesFries && item.drinkCode && item.drinkCode !== "none" && (
-    <div className="inline-flex items-center gap-1 px-2 py-[2px] rounded-full bg-emerald-800/80 border border-emerald-500 text-[10px] text-emerald-100">
-      <span>🥤🍟</span>
-      <span>En combo (papas + gaseosa)</span>
-    </div>
-  )}
+                                {typeof item.extraFriesQty === "number" && item.extraFriesQty > 0 && (
+                                  <> · Adic. papas: {item.extraFriesQty}</>
+                                )}
 
-  {/* Línea 5: nota para cocina */}
-  {item.burgerConfig?.notes && item.burgerConfig.notes.trim() !== "" && (
-    <div className="text-amber-200">
-      📝 <span className="font-semibold">Nota:</span>{" "}
-      {item.burgerConfig.notes}
-    </div>
-  )}
-</div>
+                                {typeof item.extraDrinkQty === "number" && item.extraDrinkQty > 0 && (
+                                  <> · Adic. bebida: {item.extraDrinkQty}</>
+                                )}
 
+                                <span className="mx-1">·</span>
+                                <span className="font-semibold text-emerald-100">Bebida:</span>{" "}
+                                {drinkLabel(item.drinkCode)}
+                              </div>
+
+                              {item.includesFries && item.drinkCode && item.drinkCode !== "none" && (
+                                <div className="inline-flex items-center gap-1 px-2 py-[2px] rounded-full bg-emerald-800/80 border border-emerald-500 text-[10px] text-emerald-100">
+                                  <span>🥤🍟</span>
+                                  <span>En combo (papas + gaseosa)</span>
+                                </div>
+                              )}
+
+                              {item.burgerConfig?.notes && item.burgerConfig.notes.trim() !== "" && (
+                                <div className="text-amber-200">
+                                  📝 <span className="font-semibold">Nota:</span> {item.burgerConfig.notes}
+                                </div>
+                              )}
+                            </div>
                           </div>
+
                           <div className="text-xs font-bold text-amber-200 whitespace-nowrap">
                             {formatCOP(item.totalPrice || 0)}
                           </div>
                         </div>
+
                         <div className="mt-1 flex gap-3 text-[11px]">
-                          <button
-                            onClick={() => openConfigForEdit(index)}
-                            className="text-emerald-200 underline"
-                          >
+                          <button onClick={() => openConfigForEdit(index)} className="text-emerald-200 underline">
                             Editar
                           </button>
-                          <button
-                            onClick={() => handleRemoveItem(index)}
-                            className="text-red-200 underline"
-                          >
+                          <button onClick={() => handleRemoveItem(index)} className="text-red-200 underline">
                             Quitar
                           </button>
                         </div>
@@ -707,12 +818,8 @@ function MeseroPage() {
             {/* Total y enviar */}
             <div className="bg-emerald-900/90 border border-emerald-700 rounded-2xl px-3 py-3 text-xs">
               <div className="flex justify-between mb-2">
-                <span className="text-emerald-200 font-semibold">
-                  Total pedido:
-                </span>
-                <span className="font-bold text-amber-300 text-sm">
-                  {formatCOP(orderTotal)}
-                </span>
+                <span className="text-emerald-200 font-semibold">Total pedido:</span>
+                <span className="font-bold text-amber-300 text-sm">{formatCOP(orderTotal)}</span>
               </div>
 
               <button
@@ -723,15 +830,8 @@ function MeseroPage() {
                 {sending ? "Enviando..." : "Enviar a cocina"}
               </button>
 
-              {mesaWarning && (
-                <p className="mt-1 text-[11px] text-red-200">{mesaWarning}</p>
-              )}
-
-              {message && (
-                <p className="mt-1 text-[11px] text-emerald-200">
-                  {message}
-                </p>
-              )}
+              {mesaWarning && <p className="mt-1 text-[11px] text-red-200">{mesaWarning}</p>}
+              {message && <p className="mt-1 text-[11px] text-emerald-200">{message}</p>}
             </div>
           </div>
         </section>
@@ -744,17 +844,13 @@ function MeseroPage() {
             <div className="flex justify-between items-center mb-3">
               <div>
                 <h3 className="text-sm font-semibold text-emerald-50">
-                  Paso 2 – Configurar{" "}
-                  {selectedProduct.uiName || selectedProduct.name}
+                  Paso 2 – Configurar {selectedProduct.uiName || selectedProduct.name}
                 </h3>
                 <p className="text-[11px] text-emerald-200">
                   Ajusta carnes, verduras, papas, gaseosa y notas.
                 </p>
               </div>
-              <button
-                onClick={closeConfig}
-                className="text-xs text-emerald-300 hover:text-emerald-100"
-              >
+              <button onClick={closeConfig} className="text-xs text-emerald-300 hover:text-emerald-100">
                 Cerrar ✕
               </button>
             </div>
@@ -767,277 +863,318 @@ function MeseroPage() {
                   type="number"
                   min="1"
                   value={config.quantity}
-                  onChange={(e) =>
-                    handleConfigChange("quantity", e.target.value)
-                  }
+                  onChange={(e) => handleConfigChange("quantity", e.target.value)}
                   className="w-20 px-2 py-1 rounded bg-emerald-900 border border-emerald-700 text-xs outline-none"
                 />
               </div>
 
               {/* Número de carnes */}
-              <div className="flex items-center justify-between gap-2">
-                <span>Número de carnes:</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={config.meatQty}
-                  onChange={(e) =>
-                    handleConfigChange("meatQty", e.target.value)
-                  }
-                  className="w-20 px-2 py-1 rounded bg-emerald-900 border border-emerald-700 text-xs outline-none"
-                />
-              </div>
-
-              {/* Tocineta y queso */}
-              <div className="border border-emerald-800 rounded-xl p-2 bg-emerald-900/60">
-                <span className="block mb-1 font-semibold text-[11px]">
-                  Tocineta y queso
-                </span>
-                <p className="text-[11px] text-emerald-200 mb-1">
-                  Tipo de tocineta actual: {config.baconType}
-                </p>
-                <label className="flex items-center gap-1 mt-1">
-                  <input
-                    type="checkbox"
-                    checked={config.extraBacon}
-                    onChange={(e) =>
-                      handleConfigChange("extraBacon", e.target.checked)
-                    }
-                  />
-                  Adición de tocineta (+$3.000)
-                </label>
-                <label className="flex items-center gap-1 mt-1">
-                  <input
-                    type="checkbox"
-                    checked={config.extraCheese}
-                    onChange={(e) =>
-                      handleConfigChange("extraCheese", e.target.checked)
-                    }
-                  />
-                  Adición de queso (+$3.000)
-                </label>
-              </div>
-
-              {/* Verduras */}
-              <div className="border border-emerald-800 rounded-xl p-2 bg-emerald-900/60">
-                <span className="block mb-1 font-semibold text-[11px]">
-                  Verduras
-                </span>
-
-                {/* botones generales */}
-                <div className="flex flex-wrap gap-2 mb-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleConfigChange("noVeggies", false);
-                      handleConfigChange("lettuceOption", "normal");
-                      handleConfigChange("tomato", true);
-                      handleConfigChange("onion", true);
-                    }}
-                    className={`px-2 py-1 rounded-full border text-[11px] ${
-                      !config.noVeggies && config.lettuceOption === "normal"
-                        ? "bg-emerald-300 text-emerald-950 border-emerald-400"
-                        : "bg-emerald-900 text-emerald-100 border-emerald-700"
-                    }`}
-                  >
-                    Con verduras
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleConfigChange("noVeggies", false);
-                      handleConfigChange("lettuceOption", "wrap");
-                      handleConfigChange("tomato", true);
-                      handleConfigChange("onion", true);
-                    }}
-                    className={`px-2 py-1 rounded-full border text-[11px] ${
-                      !config.noVeggies && config.lettuceOption === "wrap"
-                        ? "bg-emerald-300 text-emerald-950 border-emerald-400"
-                        : "bg-emerald-900 text-emerald-100 border-emerald-700"
-                    }`}
-                  >
-                    Envolver en lechuga
-                  </button>
-                </div>
-
-                {/* checkboxes individuales */}
-                <div className="flex flex-wrap gap-3 mt-1">
-                  <label className="flex items-center gap-1">
-                    <input
-                      type="checkbox"
-                      checked={
-                        !config.noVeggies && config.lettuceOption !== "sin"
-                      }
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        if (!checked) {
-                          handleConfigChange("lettuceOption", "sin");
-                        } else {
-                          handleConfigChange("noVeggies", false);
-                          handleConfigChange("lettuceOption", "normal");
-                        }
-                      }}
-                    />
-                    Con lechuga
-                  </label>
-
-                  <label className="flex items-center gap-1">
-                    <input
-                      type="checkbox"
-                      checked={config.tomato}
-                      onChange={(e) =>
-                        handleConfigChange("tomato", e.target.checked)
-                      }
-                    />
-                    Con tomate
-                  </label>
-
-                  <label className="flex items-center gap-1">
-                    <input
-                      type="checkbox"
-                      checked={config.onion}
-                      onChange={(e) =>
-                        handleConfigChange("onion", e.target.checked)
-                      }
-                    />
-                    Con cebolla
-                  </label>
-
-                  <label className="flex items-center gap-1">
-                    <input
-                      type="checkbox"
-                      checked={config.noVeggies}
-                      onChange={(e) =>
-                        handleConfigChange("noVeggies", e.target.checked)
-                      }
-                    />
-                    Sin verduras
-                  </label>
-                </div>
-              </div>
-
-              {/* Papas y gaseosa */}
-              <div className="border border-emerald-800 rounded-xl p-2 bg-emerald-900/60">
-                <span className="block mb-1 font-semibold text-[11px]">
-                  Papas y gaseosa
-                </span>
-
-                {/* Botones rápidos SOLO PAPAS / SOLO GASEOSA */}
-                <div className="flex flex-wrap gap-2 mb-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setConfig((prev) => ({
-                        ...prev,
-                        includesFries: true,
-                        extraFriesQty: 0,
-                        drinkCode: "none",
-                      }))
-                    }
-                    className={`px-2 py-1 rounded-full border text-[11px] ${
-                      isSoloPapas
-                        ? "bg-emerald-300 text-emerald-950 border-emerald-400"
-                        : "bg-emerald-900 text-emerald-100 border-emerald-700"
-                    }`}
-                  >
-                    Solo papas
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setConfig((prev) => ({
-                        ...prev,
-                        includesFries: false,
-                        extraFriesQty: 0,
-                        drinkCode:
-                          prev.drinkCode === "none" ? "coca" : prev.drinkCode,
-                      }))
-                    }
-                    className={`px-2 py-1 rounded-full border text-[11px] ${
-                      isSoloGaseosa
-                        ? "bg-emerald-300 text-emerald-950 border-emerald-400"
-                        : "bg-emerald-900 text-emerald-100 border-emerald-700"
-                    }`}
-                  >
-                    Solo gaseosa
-                  </button>
-                </div>
-
-                <label className="flex items-center gap-1 mb-1">
-                  <input
-                    type="checkbox"
-                    checked={config.includesFries}
-                    onChange={(e) =>
-                      handleConfigChange("includesFries", e.target.checked)
-                    }
-                  />
-                  En combo (papas incluidas)
-                </label>
-                <div className="flex items-center gap-2 mb-2">
-                  <span>Adición de papas:</span>
+              {!selectedProduct?.isPapasChess && selectedProduct?.code !== "papas" && (
+                <div className="flex items-center justify-between gap-2">
+                  <span>Número de carnes:</span>
                   <input
                     type="number"
-                    min="0"
-                    value={config.extraFriesQty}
-                    onChange={(e) =>
-                      handleConfigChange("extraFriesQty", e.target.value)
-                    }
-                    className="w-16 px-2 py-1 rounded bg-emerald-900 border border-emerald-700 text-xs outline-none"
+                    min="1"
+                    value={config.meatQty}
+                    onChange={(e) => handleConfigChange("meatQty", e.target.value)}
+                    className="w-20 px-2 py-1 rounded bg-emerald-900 border border-emerald-700 text-xs outline-none"
                   />
-                  <span className="text-[10px] text-emerald-300">
-                    x$5.000 c/u
-                  </span>
                 </div>
+              )}
 
-                <div>
-                  <span className="block mb-1">Gaseosa:</span>
-                  <select
-                    value={config.drinkCode}
-                    onChange={(e) =>
-                      handleConfigChange("drinkCode", e.target.value)
-                    }
-                    className="w-full px-2 py-1 rounded bg-emerald-900 border border-emerald-700 outline-none"
-                  >
-                    <option value="none">Sin bebida</option>
-                    <option value="coca">Coca-Cola personal (+$3.000)</option>
-                    <option value="coca_zero">
-                      Coca-Cola Zero personal (+$3.000)
-                    </option>
-                  </select>
+              {/* ✅ Config especial papas chessbeicon */}
+              {selectedProduct?.isPapasChess && (
+                <div className="border border-emerald-800 rounded-xl p-2 bg-emerald-900/60">
+                  <span className="block mb-1 font-semibold text-[11px]">Papas chessbeicon (opciones)</span>
+
+                  <label className="block mb-2">
+                    <span className="text-[11px] text-emerald-200">Tipo de tocineta:</span>
+                    <select
+                      value={config.baconType}
+                      onChange={(e) => handleConfigChange("baconType", e.target.value)}
+                      className="w-full mt-1 rounded bg-emerald-900 border border-emerald-700 p-1 outline-none"
+                    >
+                      <option value="asada">Asada</option>
+                      <option value="caramelizada">Caramelizada</option>
+                    </select>
+                  </label>
+
+                  <label className="flex items-center gap-2 mb-1">
+                    <input
+                      type="checkbox"
+                      checked={config.extraCheese}
+                      onChange={(e) => handleConfigChange("extraCheese", e.target.checked)}
+                    />
+                    Con adición de queso (+$3.000)
+                  </label>
+
+                  <label className="flex items-center gap-2 mb-1">
+                    <input
+                      type="checkbox"
+                      checked={config.extraBacon}
+                      onChange={(e) => handleConfigChange("extraBacon", e.target.checked)}
+                    />
+                    Con adición de tocineta (+$3.000)
+                  </label>
+
+                  {/* gaseosa del producto */}
+                  <label className="flex items-center gap-2 mt-2">
+                    <input
+                      type="checkbox"
+                      checked={config.drinkCode !== "none"}
+                      onChange={(e) => handleConfigChange("drinkCode", e.target.checked ? "coca" : "none")}
+                    />
+                    ¿La desea con gaseosa? (+$4.000 → queda en $14.000)
+                  </label>
+
+                  {config.drinkCode !== "none" && (
+                    <div className="mt-2">
+                      <span className="block mb-1 text-[11px] text-emerald-200">Tipo de gaseosa:</span>
+                      <select
+                        value={config.drinkCode}
+                        onChange={(e) => handleConfigChange("drinkCode", e.target.value)}
+                        className="w-full px-2 py-1 rounded bg-emerald-900 border border-emerald-700 outline-none"
+                      >
+                        <option value="coca">Coca-Cola</option>
+                        <option value="coca_zero">Coca-Cola Zero</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
+
+              {/* Tocineta y queso (solo hamburguesas) */}
+              {!selectedProduct?.isPapasChess && selectedProduct?.code !== "papas" && (
+                <div className="border border-emerald-800 rounded-xl p-2 bg-emerald-900/60">
+                  <span className="block mb-1 font-semibold text-[11px]">Tocineta y queso</span>
+                  <p className="text-[11px] text-emerald-200 mb-1">Tipo de tocineta actual: {config.baconType}</p>
+
+                  <label className="flex items-center gap-1 mt-1">
+                    <input
+                      type="checkbox"
+                      checked={config.extraBacon}
+                      onChange={(e) => handleConfigChange("extraBacon", e.target.checked)}
+                    />
+                    Adición de tocineta (+$3.000)
+                  </label>
+
+                  <label className="flex items-center gap-1 mt-1">
+                    <input
+                      type="checkbox"
+                      checked={config.extraCheese}
+                      onChange={(e) => handleConfigChange("extraCheese", e.target.checked)}
+                    />
+                    Adición de queso (+$3.000)
+                  </label>
+                </div>
+              )}
+
+              {/* Verduras (solo hamburguesas) */}
+              {!selectedProduct?.isPapasChess && selectedProduct?.code !== "papas" && (
+                <div className="border border-emerald-800 rounded-xl p-2 bg-emerald-900/60">
+                  <span className="block mb-1 font-semibold text-[11px]">Verduras</span>
+
+                  <div className="flex flex-wrap gap-2 mb-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleConfigChange("noVeggies", false);
+                        handleConfigChange("lettuceOption", "normal");
+                        handleConfigChange("tomato", true);
+                        handleConfigChange("onion", true);
+                      }}
+                      className={`px-2 py-1 rounded-full border text-[11px] ${
+                        !config.noVeggies && config.lettuceOption === "normal"
+                          ? "bg-emerald-300 text-emerald-950 border-emerald-400"
+                          : "bg-emerald-900 text-emerald-100 border-emerald-700"
+                      }`}
+                    >
+                      Con verduras
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleConfigChange("noVeggies", false);
+                        handleConfigChange("lettuceOption", "wrap");
+                        handleConfigChange("tomato", true);
+                        handleConfigChange("onion", true);
+                      }}
+                      className={`px-2 py-1 rounded-full border text-[11px] ${
+                        !config.noVeggies && config.lettuceOption === "wrap"
+                          ? "bg-emerald-300 text-emerald-950 border-emerald-400"
+                          : "bg-emerald-900 text-emerald-100 border-emerald-700"
+                      }`}
+                    >
+                      Envolver en lechuga
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3 mt-1">
+                    <label className="flex items-center gap-1">
+                      <input
+                        type="checkbox"
+                        checked={!config.noVeggies && config.lettuceOption !== "sin"}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          if (!checked) handleConfigChange("lettuceOption", "sin");
+                          else {
+                            handleConfigChange("noVeggies", false);
+                            handleConfigChange("lettuceOption", "normal");
+                          }
+                        }}
+                      />
+                      Con lechuga
+                    </label>
+
+                    <label className="flex items-center gap-1">
+                      <input
+                        type="checkbox"
+                        checked={config.tomato}
+                        onChange={(e) => handleConfigChange("tomato", e.target.checked)}
+                      />
+                      Con tomate
+                    </label>
+
+                    <label className="flex items-center gap-1">
+                      <input
+                        type="checkbox"
+                        checked={config.onion}
+                        onChange={(e) => handleConfigChange("onion", e.target.checked)}
+                      />
+                      Con cebolla
+                    </label>
+
+                    <label className="flex items-center gap-1">
+                      <input
+                        type="checkbox"
+                        checked={config.noVeggies}
+                        onChange={(e) => handleConfigChange("noVeggies", e.target.checked)}
+                      />
+                      Sin verduras
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              {/* Papas y gaseosa (solo hamburguesas) */}
+              {!selectedProduct?.isPapasChess && selectedProduct?.code !== "papas" && (
+                <div className="border border-emerald-800 rounded-xl p-2 bg-emerald-900/60">
+                  <span className="block mb-1 font-semibold text-[11px]">Papas y gaseosa</span>
+
+                  {/* ✅ Adición gaseosa por cantidad */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <span>Adición de gaseosa:</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={config.extraDrinkQty || 0}
+                      onChange={(e) => handleConfigChange("extraDrinkQty", Number(e.target.value))}
+                      className="w-16 px-2 py-1 rounded bg-emerald-900 border border-emerald-700 text-xs outline-none"
+                    />
+                    <span className="text-[10px] text-emerald-300">x$4.000 c/u</span>
+                  </div>
+
+                  {/* Botones rápidos */}
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          includesFries: true,
+                          extraFriesQty: 0,
+                          drinkCode: "none",
+                          extraDrinkQty: 0,
+                        }))
+                      }
+                      className={`px-2 py-1 rounded-full border text-[11px] ${
+                        isSoloPapas
+                          ? "bg-emerald-300 text-emerald-950 border-emerald-400"
+                          : "bg-emerald-900 text-emerald-100 border-emerald-700"
+                      }`}
+                    >
+                      Solo papas
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          includesFries: false,
+                          extraFriesQty: 0,
+                          drinkCode: prev.drinkCode === "none" ? "coca" : prev.drinkCode,
+                          extraDrinkQty: 0,
+                        }))
+                      }
+                      className={`px-2 py-1 rounded-full border text-[11px] ${
+                        isSoloGaseosa
+                          ? "bg-emerald-300 text-emerald-950 border-emerald-400"
+                          : "bg-emerald-900 text-emerald-100 border-emerald-700"
+                      }`}
+                    >
+                      Solo gaseosa
+                    </button>
+                  </div>
+
+                  <label className="flex items-center gap-1 mb-1">
+                    <input
+                      type="checkbox"
+                      checked={config.includesFries}
+                      onChange={(e) => handleConfigChange("includesFries", e.target.checked)}
+                    />
+                    En combo (papas incluidas)
+                  </label>
+
+                  <div className="flex items-center gap-2 mb-2">
+                    <span>Adición de papas:</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={config.extraFriesQty}
+                      onChange={(e) => handleConfigChange("extraFriesQty", e.target.value)}
+                      className="w-16 px-2 py-1 rounded bg-emerald-900 border border-emerald-700 text-xs outline-none"
+                    />
+                    <span className="text-[10px] text-emerald-300">x$5.000 c/u</span>
+                  </div>
+
+                  <div>
+                    <span className="block mb-1">Gaseosa:</span>
+                    <select
+                      value={config.drinkCode}
+                      onChange={(e) => handleConfigChange("drinkCode", e.target.value)}
+                      className="w-full px-2 py-1 rounded bg-emerald-900 border border-emerald-700 outline-none"
+                    >
+                      <option value="none">Sin bebida</option>
+                      <option value="coca">Coca-Cola personal (+$3.000)</option>
+                      <option value="coca_zero">Coca-Cola Zero personal (+$3.000)</option>
+                    </select>
+                  </div>
+                </div>
+              )}
 
               {/* Notas */}
               <div className="border border-emerald-800 rounded-xl p-2 bg-emerald-900/60">
-                <span className="block mb-1 font-semibold text-[11px]">
-                  Notas para cocina
-                </span>
+                <span className="block mb-1 font-semibold text-[11px]">Notas para cocina</span>
                 <textarea
                   rows={2}
                   value={config.notes}
-                  onChange={(e) =>
-                    handleConfigChange("notes", e.target.value)
-                  }
+                  onChange={(e) => handleConfigChange("notes", e.target.value)}
                   className="w-full px-2 py-1 rounded bg-emerald-900 border border-emerald-700 text-xs outline-none"
                   placeholder="Ej: partir a la mitad, muy bien asada, etc."
                 />
               </div>
 
-              {/* Resumen en vivo del ítem */}
+              {/* Resumen en vivo */}
               <div className="mt-2 border-t border-emerald-700 pt-2 text-xs text-emerald-100">
                 <div className="flex justify-between">
-                  <span>Precio por hamburguesa:</span>
-                  <span className="font-semibold text-amber-300">
-                    {formatCOP(previewUnitPrice)}
-                  </span>
+                  <span>Precio por unidad:</span>
+                  <span className="font-semibold text-amber-300">{formatCOP(previewUnitPrice)}</span>
                 </div>
                 <div className="flex justify-between mt-1">
                   <span>Total ítem (x{previewQuantity}):</span>
-                  <span className="font-semibold text-amber-300">
-                    {formatCOP(previewTotal)}
-                  </span>
+                  <span className="font-semibold text-amber-300">{formatCOP(previewTotal)}</span>
                 </div>
               </div>
 
@@ -1046,9 +1183,7 @@ function MeseroPage() {
                   onClick={handleSaveItem}
                   className="flex-1 py-2 rounded-full bg-amber-400 text-emerald-950 text-sm font-semibold"
                 >
-                  {editingIndex !== null
-                    ? "Guardar cambios"
-                    : "Agregar al pedido"}
+                  {editingIndex !== null ? "Guardar cambios" : "Agregar al pedido"}
                 </button>
                 <button
                   onClick={closeConfig}
@@ -1064,5 +1199,3 @@ function MeseroPage() {
     </div>
   );
 }
-
-export default MeseroPage;
