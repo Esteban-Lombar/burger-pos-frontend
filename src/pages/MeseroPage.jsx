@@ -20,6 +20,10 @@ const ADDON_PRICES = {
   extraBacon: 3000, // adición de tocineta
   extraCheese: 3000, // adición de queso
 
+  extraLettuce: 2000, // ✅ adición de lechuga (solo papas chessbeicon)
+  extraOnion: 2000,   // ✅ adición de cebolla (papas chessbeicon)
+
+
   fries: 3000, // papas incluidas en combo
   drink: 3000, // gaseosa incluida en combo
   comboDiscount: 1000, // descuento cuando hay papas + gaseosa
@@ -35,6 +39,11 @@ const baseConfig = {
   baconType: "asada",
   extraBacon: false,
   extraCheese: false,
+
+  extraLettuce: false, // ✅ adición de lechuga (papas chessbeicon)
+  extraOnion: false, // ✅
+
+
 
   lettuceOption: "normal", // normal | wrap | sin
   tomato: true,
@@ -64,17 +73,29 @@ function calculateUnitPrice(basePrice, config, includedMeats, selectedProduct) {
   let price = Number(basePrice) || 0;
 
   // ✅ Caso especial: Papas chessbeicon (producto aparte)
-  if (selectedProduct?.isPapasChess) {
-    if (config.extraCheese) price += ADDON_PRICES.extraCheese;
-    if (config.extraBacon) price += ADDON_PRICES.extraBacon;
+const isChess =
+  selectedProduct?.isPapasChess || selectedProduct?.code === "papas_chessbeicon";
 
-    // gaseosa del producto (base 10k / con gaseosa 14k)
-    if (config.drinkCode && config.drinkCode !== "none") {
-      price += 4000;
-    }
+if (isChess) {
+  // 🔒 Base SIEMPRE 10.000 (si viene basePrice úsalo, si no, 10k)
+  let price = Number(basePrice);
+  if (!Number.isFinite(price) || price <= 0) price = 10000;
 
-    return price;
+  if (config.extraCheese) price += ADDON_PRICES.extraCheese;
+  if (config.extraBacon) price += ADDON_PRICES.extraBacon;
+  if (config.extraOnion) price += ADDON_PRICES.extraOnion;     // +2.000
+  if (config.extraLettuce) price += ADDON_PRICES.extraLettuce; // +2.000
+
+  // gaseosa del producto
+  if (config.drinkCode && config.drinkCode !== "none") {
+    price += 4000;
   }
+
+  return price;
+}
+
+
+
 
   // ✅ Caso especial: Papas (solo) (producto aparte)
   if (selectedProduct?.code === "papas") {
@@ -232,7 +253,9 @@ const doubleProducts = useMemo(
       basePriceOverride:
         options.basePriceOverride ?? product.basePriceOverride ?? product.price,
       baseProductId: product.baseProductId || product._id,
-      includedMeats: product.includedMeats || 1,
+      includedMeats:
+  typeof product.includedMeats === "number" ? product.includedMeats : 1,
+
     });
 
     setConfig({
@@ -245,54 +268,64 @@ const doubleProducts = useMemo(
   };
 
   // Abrir configurador para EDITAR item existente
-  const openConfigForEdit = (index) => {
-    const item = items[index];
-    if (!item) return;
+const openConfigForEdit = (index) => {
+  const item = items[index];
+  if (!item) return;
 
-    const product = products.find((p) => p._id === item.product);
-    if (!product) return;
+  const product = products.find((p) => p._id === item.product);
+  if (!product) return;
 
-    setSelectedProduct({
-      ...product,
-      basePriceOverride: item.basePrice || product.price,
-      baseProductId: product._id,
-      includedMeats: item.burgerConfig?.includedMeats || 1,
-      uiName: item.productName,
-      isPapasChess: item.productCode === "papas_chessbeicon",
-    });
+  // ✅ detectar si es papas chessbeicon
+  const isPapasChess =
+    product?.isPapasChess || product?.code === "papas_chessbeicon";
 
-    setConfig({
-      quantity: item.quantity,
-      meatQty: item.burgerConfig?.meatQty || 1,
-      extraBacon: item.burgerConfig?.extraBacon || false,
-      extraCheese: item.burgerConfig?.extraCheese || false,
-      lettuceOption: item.burgerConfig?.lettuceOption || "normal",
-      tomato:
-        typeof item.burgerConfig?.tomato === "boolean"
-          ? item.burgerConfig.tomato
-          : true,
-      onion:
-        typeof item.burgerConfig?.onion === "boolean"
-          ? item.burgerConfig.onion
-          : true,
-      noVeggies: item.burgerConfig?.noVeggies || false,
+  setSelectedProduct({
+    ...product,
+    basePriceOverride:
+      typeof item.basePrice === "number"
+        ? item.basePrice
+        : product.basePriceOverride ?? product.price,
+    baseProductId: product.baseProductId || product._id,
+    includedMeats:
+      typeof product.includedMeats === "number" ? product.includedMeats : 1,
+    isPapasChess,
+  });
 
-      includesFries: item.includesFries || false,
-      extraFriesQty: item.extraFriesQty || 0,
+  setConfig({
+    quantity: item.quantity || 1,
 
-      drinkCode: item.drinkCode || "none",
-      extraDrinkQty: item.extraDrinkQty || 0, // ✅ cargar adición de gaseosa
+    meatQty: item.burgerConfig?.meatQty || 0,
+    baconType: item.burgerConfig?.baconType || "asada",
+    extraBacon: item.burgerConfig?.extraBacon || false,
+    extraCheese: item.burgerConfig?.extraCheese || false,
 
-      notes: item.burgerConfig?.notes || "",
-      baconType:
-        item.burgerConfig?.baconType ||
-        (product.options?.tocineta === "caramelizada"
-          ? "caramelizada"
-          : "asada"),
-    });
+    // ✅ verduras papas chessbeicon
+    lettuceOption: item.burgerConfig?.lettuceOption || "normal",
+    tomato:
+      typeof item.burgerConfig?.tomato === "boolean"
+        ? item.burgerConfig.tomato
+        : true,
+    onion:
+      typeof item.burgerConfig?.onion === "boolean"
+        ? item.burgerConfig.onion
+        : true,
+    noVeggies: item.burgerConfig?.noVeggies || false,
 
-    setEditingIndex(index);
-  };
+    extraLettuce: item.burgerConfig?.extraLettuce || false,
+    extraOnion: item.burgerConfig?.extraOnion || false,
+
+    includesFries: item.includesFries || false,
+    extraFriesQty: item.extraFriesQty || 0,
+
+    drinkCode: item.drinkCode || "none",
+    extraDrinkQty: item.extraDrinkQty || 0,
+
+    notes: item.burgerConfig?.notes || "",
+  });
+
+  setEditingIndex(index);
+};
+
 
   const closeConfig = () => {
     setSelectedProduct(null);
@@ -606,76 +639,122 @@ const handleSaveItem = () => {
               </div>
 
               {/* BLOQUE: Acompañamientos */}
-              {sides.length > 0 && (
-                <div className="mt-4">
-                  <h3 className="text-xs font-semibold text-emerald-300 mb-1 uppercase tracking-wide">
-                    Acompañamientos
-                  </h3>
+{sides.length > 0 && (
+  <div className="mt-4">
+    <h3 className="text-xs font-semibold text-emerald-300 mb-1 uppercase tracking-wide">
+      Acompañamientos
+    </h3>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {sides.map((product) => {
-                      const basePrice = product.basePriceOverride || 0;
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {sides.map((product) => {
+        const basePrice = product.basePriceOverride || 0;
 
-                      return (
-                        <button
-                          key={product.uiId}
-                          onClick={() => {
-                            // 🟨 Papas solo
-                            if (product.uiName === "Papas (solo)") {
-                              openConfigForNew(product, {
-                                basePriceOverride: 5000,
-                                initialMeatQty: 0,
-                              });
+        return (
+          <button
+            key={product.uiId}
+            onClick={() => {
+              // 🟨 Papas (solo)
+              if (product.uiName === "Papas (solo)") {
+                openConfigForNew(product, {
+                  basePriceOverride: 5000,
+                  initialMeatQty: 0,
+                });
 
-                              setConfig((prev) => ({
-                                ...prev,
-                                includesFries: false,
-                                extraFriesQty: 0,
-                                drinkCode: "none",
-                                extraDrinkQty: 0,
-                              }));
-                              return;
-                            }
+                // ✅ Papas solas: no llevan nada de burger ni verduras
+                setConfig((prev) => ({
+                  ...prev,
 
-                            // 🟨 Papas chessbeicon
-                            openConfigForNew(product, {
-                              basePriceOverride: 10000,
-                              initialMeatQty: 0,
-                            });
+                  quantity: 1,
 
-                            setConfig((prev) => ({
-                              ...prev,
-                              includesFries: false,
-                              extraFriesQty: 0,
-                              drinkCode: "none",
-                              extraDrinkQty: 0,
-                            }));
-                          }}
-                          className="text-left rounded-2xl p-3 border transition shadow-sm
-                                     focus:outline-none focus:ring-2 focus:ring-amber-300
-                                     bg-emerald-900/80 hover:bg-emerald-800
-                                     text-emerald-50 border-emerald-700/60"
-                        >
-                          <div className="flex justify-between items-start gap-2">
-                            <div>
-                              <div className="font-semibold text-sm">{product.uiName}</div>
-                              <div className="text-[11px] mt-0.5 uppercase text-emerald-200">
-                                Acompañamiento
-                              </div>
-                            </div>
+                  meatQty: 0,
+                  baconType: "asada",
+                  extraBacon: false,
+                  extraCheese: false,
 
-                            <span className="text-[11px] px-2 py-[2px] rounded-full bg-emerald-950/80 border border-emerald-600">
-                              Base {formatCOP(basePrice)}
-                            </span>
-                          </div>
+                  // verduras apagadas
+                  noVeggies: true,
+                  lettuceOption: "sin",
+                  tomato: false,
+                  onion: false,
 
-                          <div className="mt-2 text-[10px] opacity-80">Toca para configurar</div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  // combos/bebidas apagados
+                  includesFries: false,
+                  extraFriesQty: 0,
+                  drinkCode: "none",
+                  extraDrinkQty: 0,
+
+                  // extras de chess apagados
+                  extraLettuce: false,
+                  extraOnion: false,
+
+                  notes: "",
+                }));
+
+                return;
+              }
+
+              // 🟨 Papas chessbeicon
+              openConfigForNew(product, {
+                basePriceOverride: 10000,
+                initialMeatQty: 0,
+              });
+
+              // ✅ Chessbeicon: tomate SIEMPRE false, verduras apagadas por defecto
+              setConfig((prev) => ({
+                ...prev,
+
+                quantity: 1,
+
+                meatQty: 0,
+
+                // tomate nunca aplica en chessbeicon
+                tomato: false,
+
+                // verduras por defecto apagadas
+                noVeggies: false,
+                lettuceOption: "sin",
+                onion: false,
+
+                extraLettuce: false,
+                extraOnion: false,
+
+                // combos/bebidas de hamburguesa apagados
+                includesFries: false,
+                extraFriesQty: 0,
+                extraDrinkQty: 0,
+
+                // bebida del producto (la controlas con drinkCode)
+                drinkCode: "none",
+
+                notes: "",
+              }));
+            }}
+            className="text-left rounded-2xl p-3 border transition shadow-sm
+                       focus:outline-none focus:ring-2 focus:ring-amber-300
+                       bg-emerald-900/80 hover:bg-emerald-800
+                       text-emerald-50 border-emerald-700/60"
+          >
+            <div className="flex justify-between items-start gap-2">
+              <div>
+                <div className="font-semibold text-sm">{product.uiName}</div>
+                <div className="text-[11px] mt-0.5 uppercase text-emerald-200">
+                  Acompañamiento
                 </div>
-              )}
+              </div>
+
+              <span className="text-[11px] px-2 py-[2px] rounded-full bg-emerald-950/80 border border-emerald-600">
+                Base {formatCOP(basePrice)}
+              </span>
+            </div>
+
+            <div className="mt-2 text-[10px] opacity-80">Toca para configurar</div>
+          </button>
+        );
+      })}
+    </div>
+  </div>
+)}
+
             </div>
           )}
         </section>
@@ -732,67 +811,120 @@ const handleSaveItem = () => {
                             </div>
 
                             {/* Resumen detallado */}
-                            <div className="mt-1 text-[11px] text-emerald-200 space-y-1 leading-4">
-                              <div>
-                                <span className="font-semibold text-emerald-100">Carne:</span>{" "}
-                                {item.burgerConfig?.meatQty || 1}x{" "}
-                                <span className="mx-1">·</span>
-                                <span className="font-semibold text-emerald-100">Tocineta:</span>{" "}
-                                {item.burgerConfig?.baconType || "asada"}
-                                {item.burgerConfig?.extraBacon && " + adición"}
-                                <span className="mx-1">·</span>
-                                <span className="font-semibold text-emerald-100">Queso extra:</span>{" "}
-                                {item.burgerConfig?.extraCheese ? "sí" : "no"}
-                              </div>
+                            {/* Resumen detallado */}
+<div className="mt-1 text-[11px] text-emerald-200 space-y-1 leading-4">
+  {item.productCode === "papas" ? (
+    <>
+      {/* ✅ Papas (solo): NO mostrar carne/tocineta/queso/verduras/acompañamientos */}
+      <div>
+        <span className="font-semibold text-emerald-100">Producto:</span> Papas (solo)
+      </div>
 
-                              <div>
-                                <span className="font-semibold text-emerald-100">Verduras:</span>{" "}
-                                {item.burgerConfig?.noVeggies ? "sin" : "con"}
-                                <span className="mx-1">·</span>
-                                <span className="font-semibold text-emerald-100">Lechuga:</span>{" "}
-                                {item.burgerConfig?.lettuceOption === "wrap"
-                                  ? "wrap"
-                                  : item.burgerConfig?.lettuceOption === "sin"
-                                  ? "no"
-                                  : "sí"}
-                                <span className="mx-1">·</span>
-                                <span className="font-semibold text-emerald-100">Tomate:</span>{" "}
-                                {item.burgerConfig?.tomato ? "sí" : "no"}
-                                <span className="mx-1">·</span>
-                                <span className="font-semibold text-emerald-100">Cebolla:</span>{" "}
-                                {item.burgerConfig?.onion ? "sí" : "no"}
-                              </div>
+      {item.burgerConfig?.notes && item.burgerConfig.notes.trim() !== "" && (
+        <div className="text-amber-200">
+          📝 <span className="font-semibold">Nota:</span> {item.burgerConfig.notes}
+        </div>
+      )}
+    </>
+  ) : item.productCode === "papas_chessbeicon" ? (
+    <>
+      {/* ✅ Papas chessbeicon: mostrar SOLO lo que aplica */}
+      <div>
+        <span className="font-semibold text-emerald-100">Tocineta:</span>{" "}
+        {item.burgerConfig?.baconType || "asada"}
+        {item.burgerConfig?.extraBacon && " + adición"}
+        <span className="mx-1">·</span>
+        <span className="font-semibold text-emerald-100">Queso extra:</span>{" "}
+        {item.burgerConfig?.extraCheese ? "sí" : "no"}
+      </div>
 
-                              <div>
-                                <span className="font-semibold text-emerald-100">Acompañamientos:</span>{" "}
-                                {item.includesFries ? "con papas" : "solo hamburguesa"}
+      <div>
+        <span className="font-semibold text-emerald-100">Lechuga:</span>{" "}
+        {item.burgerConfig?.lettuceOption === "sin" ? "no" : "sí"}
+        {item.burgerConfig?.extraLettuce && " + adición"}
+        <span className="mx-1">·</span>
+        <span className="font-semibold text-emerald-100">Cebolla:</span>{" "}
+        {item.burgerConfig?.onion ? "sí" : "no"}
+        {item.burgerConfig?.extraOnion && " + adición"}
+      </div>
 
-                                {typeof item.extraFriesQty === "number" && item.extraFriesQty > 0 && (
-                                  <> · Adic. papas: {item.extraFriesQty}</>
-                                )}
+      <div>
+        <span className="font-semibold text-emerald-100">Bebida:</span>{" "}
+        {drinkLabel(item.drinkCode)}
+      </div>
 
-                                {typeof item.extraDrinkQty === "number" && item.extraDrinkQty > 0 && (
-                                  <> · Adic. bebida: {item.extraDrinkQty}</>
-                                )}
+      {item.burgerConfig?.notes && item.burgerConfig.notes.trim() !== "" && (
+        <div className="text-amber-200">
+          📝 <span className="font-semibold">Nota:</span> {item.burgerConfig.notes}
+        </div>
+      )}
+    </>
+  ) : (
+    <>
+      {/* ✅ Hamburguesas: tu resumen original */}
+      <div>
+        <span className="font-semibold text-emerald-100">Carne:</span>{" "}
+        {item.burgerConfig?.meatQty || 1}x{" "}
+        <span className="mx-1">·</span>
+        <span className="font-semibold text-emerald-100">Tocineta:</span>{" "}
+        {item.burgerConfig?.baconType || "asada"}
+        {item.burgerConfig?.extraBacon && " + adición"}
+        <span className="mx-1">·</span>
+        <span className="font-semibold text-emerald-100">Queso extra:</span>{" "}
+        {item.burgerConfig?.extraCheese ? "sí" : "no"}
+      </div>
 
-                                <span className="mx-1">·</span>
-                                <span className="font-semibold text-emerald-100">Bebida:</span>{" "}
-                                {drinkLabel(item.drinkCode)}
-                              </div>
+      <div>
+        <span className="font-semibold text-emerald-100">Verduras:</span>{" "}
+        {item.burgerConfig?.noVeggies ? "sin" : "con"}
+        <span className="mx-1">·</span>
+        <span className="font-semibold text-emerald-100">Lechuga:</span>{" "}
+        {item.burgerConfig?.lettuceOption === "wrap"
+          ? "wrap"
+          : item.burgerConfig?.lettuceOption === "sin"
+          ? "no"
+          : "sí"}
+        <span className="mx-1">·</span>
+        <span className="font-semibold text-emerald-100">Tomate:</span>{" "}
+        {item.burgerConfig?.tomato ? "sí" : "no"}
+        <span className="mx-1">·</span>
+        <span className="font-semibold text-emerald-100">Cebolla:</span>{" "}
+        {item.burgerConfig?.onion ? "sí" : "no"}
+      </div>
 
-                              {item.includesFries && item.drinkCode && item.drinkCode !== "none" && (
-                                <div className="inline-flex items-center gap-1 px-2 py-[2px] rounded-full bg-emerald-800/80 border border-emerald-500 text-[10px] text-emerald-100">
-                                  <span>🥤🍟</span>
-                                  <span>En combo (papas + gaseosa)</span>
-                                </div>
-                              )}
+      <div>
+        <span className="font-semibold text-emerald-100">Acompañamientos:</span>{" "}
+        {item.includesFries ? "con papas" : "solo hamburguesa"}
 
-                              {item.burgerConfig?.notes && item.burgerConfig.notes.trim() !== "" && (
-                                <div className="text-amber-200">
-                                  📝 <span className="font-semibold">Nota:</span> {item.burgerConfig.notes}
-                                </div>
-                              )}
-                            </div>
+        {typeof item.extraFriesQty === "number" && item.extraFriesQty > 0 && (
+          <> · Adic. papas: {item.extraFriesQty}</>
+        )}
+
+        {typeof item.extraDrinkQty === "number" && item.extraDrinkQty > 0 && (
+          <> · Adic. bebida: {item.extraDrinkQty}</>
+        )}
+
+        <span className="mx-1">·</span>
+        <span className="font-semibold text-emerald-100">Bebida:</span>{" "}
+        {drinkLabel(item.drinkCode)}
+      </div>
+
+      {item.includesFries && item.drinkCode && item.drinkCode !== "none" && (
+        <div className="inline-flex items-center gap-1 px-2 py-[2px] rounded-full bg-emerald-800/80 border border-emerald-500 text-[10px] text-emerald-100">
+          <span>🥤🍟</span>
+          <span>En combo (papas + gaseosa)</span>
+        </div>
+      )}
+
+      {item.burgerConfig?.notes && item.burgerConfig.notes.trim() !== "" && (
+        <div className="text-amber-200">
+          📝 <span className="font-semibold">Nota:</span> {item.burgerConfig.notes}
+        </div>
+      )}
+    </>
+  )}
+</div>
+
                           </div>
 
                           <div className="text-xs font-bold text-amber-200 whitespace-nowrap">
@@ -940,6 +1072,62 @@ const handleSaveItem = () => {
                       </select>
                     </div>
                   )}
+                  {/* ✅ Verduras para Papas chessbeicon */}
+<div className="mt-2 border-t border-emerald-800 pt-2">
+  <span className="block mb-1 font-semibold text-[11px]">
+    Verduras (papas chessbeicon)
+  </span>
+
+  <label className="flex items-center gap-2 mb-1">
+    <input
+      type="checkbox"
+      checked={config.lettuceOption !== "sin"}
+      onChange={(e) => {
+  const checked = e.target.checked;
+  handleConfigChange("lettuceOption", checked ? "normal" : "sin");
+  if (!checked) handleConfigChange("extraLettuce", false); // ✅ evita cobrar sin lechuga
+}}
+
+    />
+    Con lechuga
+  </label>
+
+  <label className="flex items-center gap-2 mb-1">
+    <input
+      type="checkbox"
+      checked={!!config.extraLettuce}
+      onChange={(e) =>
+        handleConfigChange("extraLettuce", e.target.checked)
+      }
+      disabled={config.lettuceOption === "sin"}
+    />
+    Adición de lechuga (+$2.000)
+  </label>
+
+  <label className="flex items-center gap-2 mb-1">
+    <input
+      type="checkbox"
+      checked={!!config.onion}
+      onChange={(e) => {
+  const checked = e.target.checked;
+  handleConfigChange("onion", checked);
+  if (!checked) handleConfigChange("extraOnion", false); // ✅ evita cobrar sin cebolla
+}}
+    />
+    Con cebolla
+  </label>
+
+  <label className="flex items-center gap-2">
+    <input
+      type="checkbox"
+      checked={!!config.extraOnion}
+      onChange={(e) => handleConfigChange("extraOnion", e.target.checked)}
+      disabled={!config.onion}
+    />
+    Adición de cebolla (+$2.000)
+  </label>
+</div>
+
                 </div>
               )}
 
