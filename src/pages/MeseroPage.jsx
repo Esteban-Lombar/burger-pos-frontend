@@ -11,25 +11,37 @@ function formatCOP(value) {
 }
 
 // 💰 precios de adiciones / combos
-// Base sencilla: 18.000
-// + solo papas -> +3.000
-// + solo gaseosa -> +3.000
-// + papas + gaseosa -> +6.000 - 1.000 descuento combo
+// Base hamburguesas:
+// - sola: 20.000
+// - doble carne: 25.000
+// Combo completa: +2.000 papas +4.000 bebida (total +6.000)
+// Dobles reciben 1.000 de descuento extra en combo (total +5.000)
+const BURGER_BASE_SINGLE = 20000;
+const BURGER_BASE_DOUBLE = 25000;
+
+const DRINK_PRICE_BY_CODE = {
+  coca: 4000,
+  coca_zero: 4000,
+  manzana: 4000,
+  uva: 4000,
+  agua_gas: 4000,
+  agua: 3000,
+};
+
 const ADDON_PRICES = {
-  extraMeat: 5000, // carne adicional
-  extraBacon: 3000, // adición de tocineta
-  extraCheese: 3000, // adición de queso
+  extraMeat: 5000,
+  extraBacon: 3000,
+  extraCheese: 3000,
 
-  extraLettuce: 2000, // ✅ adición de lechuga (solo papas chessbeicon)
-  extraOnion: 2000,   // ✅ adición de cebolla (papas chessbeicon)
+  extraLettuce: 2000,
+  extraOnion: 2000,
 
+  fries: 2000, // papas incluídas en combo
+  drink: 4000, // fallback para bebida si no está en DRINK_PRICE_BY_CODE
+  comboDiscount: 1000, // valor usado solo para doble carne
 
-  fries: 3000, // papas incluidas en combo
-  drink: 3000, // gaseosa incluida en combo
-  comboDiscount: 1000, // descuento cuando hay papas + gaseosa
-
-  extraFries: 5000, // adición de papas (cantidad)
-  extraDrink: 4000, // ✅ adición de gaseosa (cantidad)
+  extraFries: 5000,
+  extraDrink: 4000,
 };
 
 const baseConfig = {
@@ -63,6 +75,10 @@ function drinkLabel(code) {
   if (!code || code === "none") return "sin bebida";
   if (code === "coca") return "Coca-Cola";
   if (code === "coca_zero") return "Coca-Cola Zero";
+  if (code === "manzana") return "Manzana";
+  if (code === "uva") return "Uva";
+  if (code === "agua_gas") return "Agua con gas";
+  if (code === "agua") return "Agua normal";
   return code;
 }
 
@@ -77,20 +93,17 @@ const isChess =
   selectedProduct?.isPapasChess || selectedProduct?.code === "papas_chessbeicon";
 
 if (isChess) {
-  // 🔒 Base SIEMPRE 10.000 (si viene basePrice úsalo, si no, 10k)
+  // 🔒 Base SIEMPRE 15.000 (papas raras)
   let price = Number(basePrice);
-  if (!Number.isFinite(price) || price <= 0) price = 10000;
+  if (!Number.isFinite(price) || price <= 0) price = 15000;
 
   if (config.extraCheese) price += ADDON_PRICES.extraCheese;
   if (config.extraBacon) price += ADDON_PRICES.extraBacon;
-  if (config.extraOnion) price += ADDON_PRICES.extraOnion;     // +2.000
-  if (config.extraLettuce) price += ADDON_PRICES.extraLettuce; // +2.000
+  if (config.extraOnion) price += ADDON_PRICES.extraOnion;
+  if (config.extraLettuce) price += ADDON_PRICES.extraLettuce;
 
-  // gaseosa del producto
-  if (config.drinkCode && config.drinkCode !== "none") {
-    price += 4000;
-  }
-
+  const hasDrink = config.drinkCode && config.drinkCode !== "none";
+  if (hasDrink) price += DRINK_PRICE_BY_CODE[config.drinkCode] ?? ADDON_PRICES.drink;
   return price;
 }
 
@@ -112,15 +125,26 @@ if (isChess) {
   if (config.extraBacon) price += ADDON_PRICES.extraBacon;
   if (config.extraCheese) price += ADDON_PRICES.extraCheese;
 
-  // 🍟 papas incluidas (combo)
-  if (config.includesFries) price += ADDON_PRICES.fries;
-
-  // 🥤 gaseosa incluida (combo)
   const hasDrink = config.drinkCode && config.drinkCode !== "none";
-  if (hasDrink) price += ADDON_PRICES.drink;
 
-  // 🔻 descuento combo si hay papas + gaseosa
-  if (config.includesFries && hasDrink) price -= ADDON_PRICES.comboDiscount;
+  // SOLO PAPAS (sin bebida): +5.000
+  if (config.includesFries && !hasDrink) {
+    price += 5000;
+  }
+
+  // SOLO BEBIDA (sin papas): +valor bebida
+  if (!config.includesFries && hasDrink) {
+    price += DRINK_PRICE_BY_CODE[config.drinkCode] ?? ADDON_PRICES.drink;
+  }
+
+  // COMBO (papas + bebida)
+  if (config.includesFries && hasDrink) {
+    price += ADDON_PRICES.fries; // 3.000
+    price += DRINK_PRICE_BY_CODE[config.drinkCode] ?? ADDON_PRICES.drink;
+
+    // descuento del combo: -1.000 para simple / -2.000 para doble
+    price -= included === 2 ? 2000 : 1000;
+  }
 
   // ➕ adiciones por cantidad
   const extraFriesQty = Number(config.extraFriesQty) || 0;
@@ -175,7 +199,7 @@ const singleProducts = useMemo(
         ...p,
         uiId: p._id + "-single",
         uiName: p.name,
-        basePriceOverride: p.price,
+        basePriceOverride: BURGER_BASE_SINGLE,
         includedMeats: 1,
         baseProductId: p._id,
       })),
@@ -192,7 +216,7 @@ const doubleProducts = useMemo(
         ...p,
         uiId: p._id + "-double",
         uiName: `${p.name} (doble carne)`,
-        basePriceOverride: (p.price || 0) + ADDON_PRICES.extraMeat,
+        basePriceOverride: BURGER_BASE_DOUBLE,
         includedMeats: 2,
         baseProductId: p._id,
       })),
@@ -228,7 +252,7 @@ const doubleProducts = useMemo(
               ...papasChessProduct,
               uiId: papasChessProduct._id + "-side",
               uiName: "Papas chessbeicon",
-              basePriceOverride: 10000,
+              basePriceOverride: 15000,
               includedMeats: 0,
               baseProductId: papasChessProduct._id,
               isPapasChess: true,
@@ -695,7 +719,7 @@ const handleSaveItem = () => {
 
               // 🟨 Papas chessbeicon
               openConfigForNew(product, {
-                basePriceOverride: 10000,
+                basePriceOverride: 15000,
                 initialMeatQty: 0,
               });
 
@@ -1056,12 +1080,12 @@ const handleSaveItem = () => {
                       checked={config.drinkCode !== "none"}
                       onChange={(e) => handleConfigChange("drinkCode", e.target.checked ? "coca" : "none")}
                     />
-                    ¿La desea con gaseosa? (+$4.000 → queda en $14.000)
+                    ¿La desea con bebida? (+$4.000 para gaseosas/agua con gas, +$3.000 para agua normal)
                   </label>
 
                   {config.drinkCode !== "none" && (
                     <div className="mt-2">
-                      <span className="block mb-1 text-[11px] text-emerald-200">Tipo de gaseosa:</span>
+                      <span className="block mb-1 text-[11px] text-emerald-200">Tipo de bebida:</span>
                       <select
                         value={config.drinkCode}
                         onChange={(e) => handleConfigChange("drinkCode", e.target.value)}
@@ -1069,6 +1093,10 @@ const handleSaveItem = () => {
                       >
                         <option value="coca">Coca-Cola</option>
                         <option value="coca_zero">Coca-Cola Zero</option>
+                        <option value="manzana">Manzana</option>
+                        <option value="uva">Uva</option>
+                        <option value="agua_gas">Agua con gas</option>
+                        <option value="agua">Agua normal</option>
                       </select>
                     </div>
                   )}
@@ -1328,15 +1356,19 @@ const handleSaveItem = () => {
                   </div>
 
                   <div>
-                    <span className="block mb-1">Gaseosa:</span>
+                    <span className="block mb-1">Bebida:</span>
                     <select
                       value={config.drinkCode}
                       onChange={(e) => handleConfigChange("drinkCode", e.target.value)}
                       className="w-full px-2 py-1 rounded bg-emerald-900 border border-emerald-700 outline-none"
                     >
                       <option value="none">Sin bebida</option>
-                      <option value="coca">Coca-Cola personal (+$3.000)</option>
-                      <option value="coca_zero">Coca-Cola Zero personal (+$3.000)</option>
+                      <option value="coca">Coca-Cola (+$4.000)</option>
+                      <option value="coca_zero">Coca-Cola Zero (+$4.000)</option>
+                      <option value="manzana">Manzana (+$4.000)</option>
+                      <option value="uva">Uva (+$4.000)</option>
+                      <option value="agua_gas">Agua con gas (+$4.000)</option>
+                      <option value="agua">Agua normal (+$3.000)</option>
                     </select>
                   </div>
                 </div>

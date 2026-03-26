@@ -12,6 +12,10 @@ import {
 function drinkLabel(code) {
   if (code === "coca") return "Coca-Cola";
   if (code === "coca_zero") return "Coca-Cola Zero";
+  if (code === "manzana") return "Manzana";
+  if (code === "uva") return "Uva";
+  if (code === "agua_gas") return "Agua con gas";
+  if (code === "agua") return "Agua normal";
   return "sin bebida";
 }
 
@@ -30,9 +34,9 @@ const ADDON_PRICES = {
   extraBacon: 3000,
   extraCheese: 3000,
 
-  fries: 3000,       // papas del combo (solo hamburguesas)
+  fries: 2000,       // papas del combo (solo hamburguesas)
   extraFries: 5000,  // adic papas (solo hamburguesas)
-  drink: 3000,       // gaseosa del combo (solo hamburguesas)
+  drink: 4000,       // gaseosa del combo (solo hamburguesas)
   extraDrink: 4000,  // ✅ adición gaseosa (aparte del combo)
 
   // ✅ papas chessbeicon veggies add-ons
@@ -41,6 +45,15 @@ const ADDON_PRICES = {
 };
 
 const COMBO_DISCOUNT = 1000;
+
+const DRINK_PRICE_BY_CODE = {
+  coca: 4000,
+  coca_zero: 4000,
+  manzana: 4000,
+  uva: 4000,
+  agua_gas: 4000,
+  agua: 3000,
+};
 
 // 🔢 Recalcular unitario desde BASE (no desde unitPrice)
 // includedMeats = carnes incluidas en el basePrice
@@ -53,10 +66,10 @@ function calculateUnitPrice(basePrice, cfg, includedMeats = 1) {
     return unit;
   }
 
-  // ✅ PAPAS CHESSBEICON: base 10k + extras + gaseosa del producto (+4k)
+  // ✅ PAPAS CHESSBEICON: base 15k + extras + bebida del producto
   if (productCode === "papas_chessbeicon") {
     let unit = Number(basePrice);
-    if (!Number.isFinite(unit) || unit <= 0) unit = 10000;
+    if (!Number.isFinite(unit) || unit <= 0) unit = 15000;
 
     if (cfg.extraCheese) unit += ADDON_PRICES.extraCheese;
     if (cfg.extraBacon) unit += ADDON_PRICES.extraBacon;
@@ -64,11 +77,9 @@ function calculateUnitPrice(basePrice, cfg, includedMeats = 1) {
     if (cfg.extraOnion) unit += ADDON_PRICES.extraOnion;
     if (cfg.extraLettuce) unit += ADDON_PRICES.extraLettuce;
 
-    // gaseosa del producto (NO es combo) => +4000 si eligió una
     const hasDrink = cfg.drinkCode && cfg.drinkCode !== "none";
-    if (hasDrink) unit += 4000;
+    if (hasDrink) unit += DRINK_PRICE_BY_CODE[cfg.drinkCode] ?? ADDON_PRICES.drink;
 
-    // adición gaseosa aparte (si la usan)
     const extraDrinkQty = Number(cfg.extraDrinkQty) || 0;
     if (extraDrinkQty > 0) unit += extraDrinkQty * ADDON_PRICES.extraDrink;
 
@@ -86,19 +97,30 @@ function calculateUnitPrice(basePrice, cfg, includedMeats = 1) {
   if (cfg.extraBacon) unit += ADDON_PRICES.extraBacon;
   if (cfg.extraCheese) unit += ADDON_PRICES.extraCheese;
 
-  if (cfg.includesFries) unit += ADDON_PRICES.fries;
+  const hasDrink = cfg.drinkCode && cfg.drinkCode !== "none";
+
+  // SOLO PAPAS
+  if (cfg.includesFries && !hasDrink) {
+    unit += 5000;
+  }
+
+  // SOLO BEBIDA
+  if (!cfg.includesFries && hasDrink) {
+    unit += DRINK_PRICE_BY_CODE[cfg.drinkCode] ?? ADDON_PRICES.drink;
+  }
+
+  // COMBO
+  if (cfg.includesFries && hasDrink) {
+    unit += ADDON_PRICES.fries;
+    unit += DRINK_PRICE_BY_CODE[cfg.drinkCode] ?? ADDON_PRICES.drink;
+    unit -= includedMeats === 2 ? 2000 : 1000;
+  }
 
   const extraFriesQty = Number(cfg.extraFriesQty) || 0;
   if (extraFriesQty > 0) unit += extraFriesQty * ADDON_PRICES.extraFries;
 
-  const hasDrink = cfg.drinkCode && cfg.drinkCode !== "none";
-  if (hasDrink) unit += ADDON_PRICES.drink;
-
   const extraDrinkQty = Number(cfg.extraDrinkQty) || 0;
   if (extraDrinkQty > 0) unit += extraDrinkQty * ADDON_PRICES.extraDrink;
-
-  // descuento combo SOLO cuando lleva papas+ bebida del combo
-  if (cfg.includesFries && hasDrink) unit -= COMBO_DISCOUNT;
 
   return unit;
 }
