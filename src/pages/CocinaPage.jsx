@@ -109,11 +109,13 @@ function calculateUnitPrice(basePrice, cfg, includedMeats = 1) {
     unit += DRINK_PRICE_BY_CODE[cfg.drinkCode] ?? ADDON_PRICES.drink;
   }
 
-  // COMBO
+  // COMBO: precio fijo
   if (cfg.includesFries && hasDrink) {
-    unit += ADDON_PRICES.fries;
-    unit += DRINK_PRICE_BY_CODE[cfg.drinkCode] ?? ADDON_PRICES.drink;
-    unit -= includedMeats === 2 ? 2000 : 1000;
+    if (includedMeats === 1) {
+      unit = 20000 + 6000; // 26k
+    } else if (includedMeats === 2) {
+      unit = 25000 + 5000; // 30k
+    }
   }
 
   const extraFriesQty = Number(cfg.extraFriesQty) || 0;

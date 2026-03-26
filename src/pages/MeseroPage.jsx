@@ -137,13 +137,13 @@ if (isChess) {
     price += DRINK_PRICE_BY_CODE[config.drinkCode] ?? ADDON_PRICES.drink;
   }
 
-  // COMBO (papas + bebida)
+  // COMBO (papas + bebida): precio fijo
   if (config.includesFries && hasDrink) {
-    price += ADDON_PRICES.fries; // 3.000
-    price += DRINK_PRICE_BY_CODE[config.drinkCode] ?? ADDON_PRICES.drink;
-
-    // descuento del combo: -1.000 para simple / -2.000 para doble
-    price -= included === 2 ? 2000 : 1000;
+    if (included === 1) {
+      price = BURGER_BASE_SINGLE + 6000; // 20k + 6k = 26k
+    } else if (included === 2) {
+      price = BURGER_BASE_DOUBLE + 5000; // 25k + 5k = 30k
+    }
   }
 
   // ➕ adiciones por cantidad
