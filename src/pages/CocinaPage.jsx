@@ -4,6 +4,7 @@ import {
   fetchPendingOrders,
   updateOrderStatus,
   updateOrderData,
+  deleteOrder,
 } from "../api/client";
 
 // -------------------------------
@@ -66,10 +67,10 @@ function calculateUnitPrice(basePrice, cfg, includedMeats = 1) {
     return unit;
   }
 
-  // ✅ PAPAS CHESSBEICON: base 15k + extras + bebida del producto
+  // ✅ PAPAS CHESSBEICON: base 18k + extras + bebida del producto
   if (productCode === "papas_chessbeicon") {
     let unit = Number(basePrice);
-    if (!Number.isFinite(unit) || unit <= 0) unit = 15000;
+    if (!Number.isFinite(unit) || unit <= 0) unit = 18000;
 
     if (cfg.extraCheese) unit += ADDON_PRICES.extraCheese;
     if (cfg.extraBacon) unit += ADDON_PRICES.extraBacon;
@@ -85,6 +86,9 @@ function calculateUnitPrice(basePrice, cfg, includedMeats = 1) {
 
     return unit;
   }
+
+  // ✅ Sangre Azul: combo tiene descuento distinto al resto de sencillas
+  const isSangreAzul = productCode === "sangre_azul";
 
   // ✅ HAMBURGUESAS: lógica normal de combo y extras
   let unit = Number(basePrice) || 0;
@@ -111,10 +115,12 @@ function calculateUnitPrice(basePrice, cfg, includedMeats = 1) {
 
   // COMBO: precio fijo
   if (cfg.includesFries && hasDrink) {
+    const comboBase = Number(basePrice) || 0;
     if (includedMeats === 1) {
-      unit = 20000 + 6000; // 26k
+      // Sangre Azul sencilla: +5k en combo (resto de sencillas: +6k)
+      unit = comboBase + (isSangreAzul ? 5000 : 6000);
     } else if (includedMeats === 2) {
-      unit = 25000 + 5000; // 30k
+      unit = comboBase + 5000;
     }
   }
 
@@ -325,6 +331,23 @@ export default function CocinaPage() {
     } catch (e) {
       console.error(e);
       alert("No se pudo actualizar el estado. Revisa conexión/servidor.");
+    }
+  };
+
+  // 🗑️ Eliminar pedido (ej: se tomó doble por error)
+  const handleDeleteOrder = async (order) => {
+    const label = order.toGo ? "PARA LLEVAR" : `Mesa ${order.tableNumber}`;
+    const confirmed = window.confirm(
+      `¿Eliminar el pedido de ${label}? Esta acción no se puede deshacer.`
+    );
+    if (!confirmed) return;
+
+    try {
+      await deleteOrder(order._id);
+      await loadOrders();
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo eliminar el pedido. Revisa conexión/servidor.");
     }
   };
 
@@ -577,6 +600,13 @@ export default function CocinaPage() {
                     onClick={() => changeStatus(order, "listo")}
                   >
                     Listo
+                  </button>
+
+                  <button
+                    className="px-3 py-1.5 rounded-full bg-red-600 hover:bg-red-500 text-slate-50 font-semibold"
+                    onClick={() => handleDeleteOrder(order)}
+                  >
+                    Eliminar pedido
                   </button>
                 </div>
               </div>

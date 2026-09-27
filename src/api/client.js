@@ -80,6 +80,19 @@ export async function updateOrderData(id, payload) {
   return res.json();
 }
 
+// 🔹 Eliminar una orden (ej: pedido duplicado por error)
+export async function deleteOrder(id) {
+  const res = await fetch(`${API_URL}/orders/${id}`, {
+    method: "DELETE",
+  });
+
+  if (!res.ok) {
+    throw new Error("Error eliminando orden");
+  }
+
+  return res.json();
+}
+
 // 🔹 Resumen de hoy / por fecha para cierre de caja (Admin)
 // Si pasas dateString = "YYYY-MM-DD" trae ese día; si no, trae hoy
 export async function fetchTodaySummary(dateString) {

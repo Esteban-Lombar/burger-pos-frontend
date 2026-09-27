@@ -13,11 +13,15 @@ function formatCOP(value) {
 // 💰 precios de adiciones / combos
 // Base hamburguesas:
 // - sola: 20.000
-// - doble carne: 25.000
+// - doble carne: 28.000
 // Combo completa: +2.000 papas +4.000 bebida (total +6.000)
 // Dobles reciben 1.000 de descuento extra en combo (total +5.000)
 const BURGER_BASE_SINGLE = 20000;
-const BURGER_BASE_DOUBLE = 25000;
+const BURGER_BASE_DOUBLE = 28000;
+
+// Sangre Azul: hamburguesa con precio propio (no usa las bases genéricas de arriba)
+const SANGRE_AZUL_BASE_SINGLE = 25000;
+const SANGRE_AZUL_BASE_DOUBLE = 33000;
 
 const DRINK_PRICE_BY_CODE = {
   coca: 4000,
@@ -93,9 +97,9 @@ const isChess =
   selectedProduct?.isPapasChess || selectedProduct?.code === "papas_chessbeicon";
 
 if (isChess) {
-  // 🔒 Base SIEMPRE 15.000 (papas raras)
+  // 🔒 Base SIEMPRE 18.000 (papas raras)
   let price = Number(basePrice);
-  if (!Number.isFinite(price) || price <= 0) price = 15000;
+  if (!Number.isFinite(price) || price <= 0) price = 18000;
 
   if (config.extraCheese) price += ADDON_PRICES.extraCheese;
   if (config.extraBacon) price += ADDON_PRICES.extraBacon;
@@ -114,6 +118,9 @@ if (isChess) {
   if (selectedProduct?.code === "papas") {
     return price; // basePriceOverride ya es 5000
   }
+
+  // ✅ Sangre Azul: combo tiene descuento distinto al resto de sencillas
+  const isSangreAzul = selectedProduct?.code === "sangre_azul";
 
   // 🥩 Carnes: si el cliente sube meatQty por encima de las carnes incluidas, cobra extra
   const meatQty = Number(config.meatQty) || 1;
@@ -139,10 +146,12 @@ if (isChess) {
 
   // COMBO (papas + bebida): precio fijo
   if (config.includesFries && hasDrink) {
+    const comboBase = Number(basePrice) || 0;
     if (included === 1) {
-      price = BURGER_BASE_SINGLE + 6000; // 20k + 6k = 26k
+      // Sangre Azul sencilla: +5k en combo (resto de sencillas: +6k)
+      price = comboBase + (isSangreAzul ? 5000 : 6000);
     } else if (included === 2) {
-      price = BURGER_BASE_DOUBLE + 5000; // 25k + 5k = 30k
+      price = comboBase + 5000;
     }
   }
 
@@ -199,7 +208,8 @@ const singleProducts = useMemo(
         ...p,
         uiId: p._id + "-single",
         uiName: p.name,
-        basePriceOverride: BURGER_BASE_SINGLE,
+        basePriceOverride:
+          p.code === "sangre_azul" ? SANGRE_AZUL_BASE_SINGLE : BURGER_BASE_SINGLE,
         includedMeats: 1,
         baseProductId: p._id,
       })),
@@ -216,7 +226,8 @@ const doubleProducts = useMemo(
         ...p,
         uiId: p._id + "-double",
         uiName: `${p.name} (doble carne)`,
-        basePriceOverride: BURGER_BASE_DOUBLE,
+        basePriceOverride:
+          p.code === "sangre_azul" ? SANGRE_AZUL_BASE_DOUBLE : BURGER_BASE_DOUBLE,
         includedMeats: 2,
         baseProductId: p._id,
       })),
@@ -252,7 +263,7 @@ const doubleProducts = useMemo(
               ...papasChessProduct,
               uiId: papasChessProduct._id + "-side",
               uiName: "Papas chessbeicon",
-              basePriceOverride: 15000,
+              basePriceOverride: 18000,
               includedMeats: 0,
               baseProductId: papasChessProduct._id,
               isPapasChess: true,
@@ -719,7 +730,7 @@ const handleSaveItem = () => {
 
               // 🟨 Papas chessbeicon
               openConfigForNew(product, {
-                basePriceOverride: 15000,
+                basePriceOverride: 18000,
                 initialMeatQty: 0,
               });
 
